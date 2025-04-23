@@ -56,6 +56,7 @@ const Post = ({ post, onDelete, onUpdate }) => {
   const [anchorEl, setAnchorEl] = useState(null);
   const [editMode, setEditMode] = useState(false);
   const [editedContent, setEditedContent] = useState(post.content);
+  const [editedLink, setEditedLink] = useState(post.link || '');
   const [editedPrivacy, setEditedPrivacy] = useState(post.privacy || 'public');
   const [snackbar, setSnackbar] = useState({ open: false, message: '', severity: 'success' });
   const navigate = useNavigate();
@@ -256,10 +257,13 @@ const Post = ({ post, onDelete, onUpdate }) => {
       const postRef = doc(db, 'posts', post.id);
       const updates = {
         content: editedContent,
+        link: editedLink, 
         privacy: editedPrivacy,
         edited: true,
         editedAt: serverTimestamp()
       };
+      
+
 
       await updateDoc(postRef, updates);
       setEditMode(false);
@@ -599,6 +603,13 @@ const Post = ({ post, onDelete, onUpdate }) => {
               onChange={(e) => setEditedContent(e.target.value)}
               label="Post content"
               variant="outlined"
+            />
+            <TextField
+            fullWidth
+            label="Link (opcional)"
+            value={editedLink}
+            onChange={(e) => setEditedLink(e.target.value)}
+            variant="outlined"
             />
             <FormControl fullWidth>
               <InputLabel>Privacy</InputLabel>

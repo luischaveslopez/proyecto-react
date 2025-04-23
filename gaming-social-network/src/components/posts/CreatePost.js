@@ -30,6 +30,26 @@ import {
   Close as CloseIcon
 } from '@mui/icons-material';
 
+const uploadImageToImgbb = async (file) => {
+  const apiKey = 'c219f99abffb6810a5c657dfc480d1f5'; 
+  const formData = new FormData();
+  formData.append('image', file);
+
+  const response = await fetch(`https://api.imgbb.com/1/upload?key=${apiKey}`, {
+    method: 'POST',
+    body: formData
+  });
+
+  const data = await response.json();
+
+  if (!data.success) {
+    throw new Error('Error uploading image');
+  }
+
+  return data.data.url; //link de la imagen del post
+};
+
+
 const CreatePost = ({ onPostCreated }) => {
   const [content, setContent] = useState('');
   const [media, setMedia] = useState(null);
@@ -69,49 +89,66 @@ const CreatePost = ({ onPostCreated }) => {
 
   const handleSubmit = async (e) => {
     e.preventDefault();
-    if (!content.trim() && !media && !link) {
-      setError('Post cannot be empty');
-      return;
+    const combinedText = `${content.trim()} ${link.trim()}`.trim();
+
+    if (!combinedText && !media) {
+    setError('Los post no pueden estar vacíos');
+    return;
     }
 
+  
     if (!currentUser) {
-      setError('You must be logged in to create a post');
+      setError('Tienes que estar logueado para hacer un post');
       return;
     }
-
+  
     try {
       setLoading(true);
       setError('');
-
+  
       let mediaUrl = '';
       if (media) {
-        const mediaRef = ref(storage, `post-media/${Date.now()}_${media.name}`);
-        await uploadBytes(mediaRef, media);
-        mediaUrl = await getDownloadURL(mediaRef);
+        mediaUrl = await uploadImageToImgbb(media);
       }
-
+  
       if (link && !isValidUrl(link)) {
         setError('Please enter a valid URL');
         return;
       }
 
-      const postData = {
-        content,
-        mediaUrl,
-        mediaType,
-        link: link || '',
-        authorId: currentUser.uid,
-        timestamp: new Date().toISOString(),
-        likes: [],
-        comments: [],
-        privacy,
-        gameTag,
-        shares: 0,
-        type: mediaType || (link ? 'link' : 'text')
-      };
+        let finalContent = content.trim();
+        let finalLink = link.trim();
 
+        const isLinkOnly = isValidUrl(finalContent) && !finalLink;
+
+        if (isLinkOnly) {
+          finalLink = finalContent;
+          finalContent = '';
+        }
+
+        if (finalLink && finalContent.includes(finalLink)) {
+          finalContent = finalContent.replace(finalLink, '').trim();
+        }
+
+        const postData = {
+          content: finalContent,
+          link: finalLink,
+          mediaUrl,
+          mediaType,
+          authorId: currentUser.uid,
+          timestamp: new Date().toISOString(),
+          likes: [],
+          comments: [],
+          privacy,
+          gameTag,
+          shares: 0,
+          type: mediaType || (finalLink ? 'link' : 'text')
+        };
+        
+        
+  
       const docRef = await addDoc(collection(db, 'posts'), postData);
-
+  
       // Reset form
       setContent('');
       setMedia(null);
@@ -120,7 +157,7 @@ const CreatePost = ({ onPostCreated }) => {
       setShowLinkInput(false);
       setGameTag('');
       setPrivacy('public');
-
+  
       if (onPostCreated) {
         onPostCreated({ id: docRef.id, ...postData });
       }
@@ -131,6 +168,7 @@ const CreatePost = ({ onPostCreated }) => {
       setLoading(false);
     }
   };
+  
 
   return (
     <Box sx={{ width: '100%' }}>

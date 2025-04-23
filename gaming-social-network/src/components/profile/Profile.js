@@ -110,11 +110,16 @@ const Profile = () => {
       // Fetch user's posts
       const postsQuery = query(
         collection(db, 'posts'),
-        where('authorId', '==', userId),
-        orderBy('timestamp', 'desc')
+        where('authorId', '==', userId)
       );
+      
       const postsSnapshot = await getDocs(postsQuery);
-      setPosts(postsSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
+      const postsList = postsSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+
+      postsList.sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp));
+
+      setPosts(postsList);
+
 
       if (isOwnProfile) {
         // Fetch saved posts

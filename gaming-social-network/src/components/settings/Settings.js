@@ -69,6 +69,25 @@ import {
 } from '@mui/icons-material';
 import { useNavigate } from 'react-router-dom';
 
+const uploadImageToImgbb = async (file) => {
+  const apiKey = 'c219f99abffb6810a5c657dfc480d1f5'; // API de imgbb
+  const formData = new FormData();
+  formData.append('image', file);
+
+  const response = await fetch(`https://api.imgbb.com/1/upload?key=${apiKey}`, {
+    method: 'POST',
+    body: formData
+  });
+
+  const data = await response.json();
+
+  if (!data.success) {
+    throw new Error('Error al subir la imagen');
+  }
+
+  return data.data.url; 
+};
+
 const Settings = () => {
   const [currentTab, setCurrentTab] = useState(0);
   const [loading, setLoading] = useState(true);
@@ -168,13 +187,11 @@ const Settings = () => {
   const handleUpdateProfile = async () => {
     try {
       let photoURL = currentUser.photoURL;
-
+  
       if (avatarFile) {
-        const storageRef = ref(storage, `avatars/${currentUser.uid}`);
-        const snapshot = await uploadBytes(storageRef, avatarFile);
-        photoURL = await getDownloadURL(snapshot.ref);
+        photoURL = await uploadImageToImgbb(avatarFile);
       }
-
+  
       const userRef = doc(db, 'users', currentUser.uid);
       await updateDoc(userRef, {
         username,
@@ -182,20 +199,32 @@ const Settings = () => {
         photoURL,
         updatedAt: serverTimestamp()
       });
-
+  
       await updateProfile(currentUser, {
         displayName: username,
         photoURL
       });
-
+  
+      await currentUser.reload();
+  
       showSnackbar('Profile updated successfully', 'success');
       setAvatarFile(null);
       setAvatarPreview(null);
+  
+      setUserData(prev => ({
+        ...prev,
+        username,
+        bio,
+        photoURL
+      }));
+  
     } catch (error) {
       console.error('Error updating profile:', error);
       showSnackbar('Error updating profile', 'error');
     }
   };
+  
+  
 
   const handleAvatarChange = (event) => {
     const file = event.target.files[0];

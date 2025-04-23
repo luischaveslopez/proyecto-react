@@ -3,6 +3,7 @@ import { auth } from '../../firebase/config';
 import { signInWithEmailAndPassword, signInWithPopup, GoogleAuthProvider } from 'firebase/auth';
 import { TextField, Button, Paper, Typography, Container, Box } from '@mui/material';
 import { useNavigate } from 'react-router-dom';
+import { ensureUserDocumentExists } from '../../firebase/userService'; // 🔥 Importar la función nueva
 
 const Login = () => {
   const [email, setEmail] = useState('');
@@ -23,7 +24,11 @@ const Login = () => {
   const handleGoogleLogin = async () => {
     const provider = new GoogleAuthProvider();
     try {
-      await signInWithPopup(auth, provider);
+      const result = await signInWithPopup(auth, provider);
+      const user = result.user;
+
+      await ensureUserDocumentExists(user);
+
       navigate('/');
     } catch (error) {
       setError(error.message);

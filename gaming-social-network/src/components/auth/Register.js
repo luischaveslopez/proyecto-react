@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { auth, db } from '../../firebase/config';
 import { createUserWithEmailAndPassword } from 'firebase/auth';
-import { doc, setDoc } from 'firebase/firestore';
+import { doc, setDoc, serverTimestamp } from 'firebase/firestore';
 import { TextField, Button, Paper, Typography, Container, Box } from '@mui/material';
 import { useNavigate } from 'react-router-dom';
 
@@ -26,8 +26,13 @@ const Register = () => {
     e.preventDefault();
     const { username, email, password, confirmPassword } = formData;
 
+    if (!username || !email || !password || !confirmPassword) {
+      setError('All fields are required.');
+      return;
+    }
+
     if (password !== confirmPassword) {
-      setError('Passwords do not match');
+      setError('Passwords do not match.');
       return;
     }
 
@@ -40,7 +45,7 @@ const Register = () => {
       await setDoc(doc(db, 'users', user.uid), {
         username,
         email,
-        createdAt: new Date().toISOString(),
+        createdAt: serverTimestamp(), 
         bio: '',
         location: '',
         photoURL: '',
@@ -65,7 +70,15 @@ const Register = () => {
 
       navigate('/');
     } catch (error) {
-      setError(error.message);
+      if (error.code === 'auth/email-already-in-use') {
+        setError('Email is already in use.');
+      } else if (error.code === 'auth/invalid-email') {
+        setError('Invalid email address.');
+      } else if (error.code === 'auth/weak-password') {
+        setError('Password should be at least 6 characters.');
+      } else {
+        setError(error.message);
+      }
     }
   };
 
