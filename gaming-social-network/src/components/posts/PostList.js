@@ -4,6 +4,7 @@ import { collection, query, where, orderBy, getDocs, doc, getDoc, limit, startAf
 import { Box, CircularProgress, Typography, Fade, useTheme } from '@mui/material';
 import Post from './Post';
 import { SentimentDissatisfied as SadIcon } from '@mui/icons-material';
+import DeviceUnknownIcon from '@mui/icons-material/DeviceUnknown';
 
 const POSTS_PER_PAGE = 5;
 
@@ -93,7 +94,7 @@ const PostList = ({
             textAlign: 'center'
           }}
         >
-          <SadIcon sx={{ fontSize: 48, color: 'text.secondary', mb: 2 }} />
+          <DeviceUnknownIcon sx={{ fontSize: 48, color: 'text.secondary', mb: 2 }} />
           <Typography variant="h6" color="text.primary" gutterBottom>
             {userId ? 'No posts yet' : 'No posts available'}
           </Typography>

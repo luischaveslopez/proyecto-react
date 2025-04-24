@@ -66,6 +66,8 @@ import {
 import PostList from '../posts/PostList';
 import CreatePost from '../posts/CreatePost';
 import FriendsList from './FriendsList';
+import ThumbUpIcon from '@mui/icons-material/ThumbUp';
+import BookmarksIcon from '@mui/icons-material/Bookmarks';
 
 const Profile = () => {
   const { userId } = useParams();
@@ -86,6 +88,7 @@ const Profile = () => {
   const [snackbar, setSnackbar] = useState({ open: false, message: '', severity: 'success' });
 
   const isOwnProfile = currentUser?.uid === userId;
+  const isDarkMode = theme.palette.mode === 'dark';
 
   useEffect(() => {
     fetchProfileData();
@@ -397,9 +400,9 @@ const Profile = () => {
           variant="fullWidth"
           sx={{ borderBottom: 1, borderColor: 'divider' }}
         >
-          <Tab icon={<GridIcon />} label="Posts" />
-          {isOwnProfile && <Tab icon={<BookmarkIcon />} label="Saved" />}
-          {isOwnProfile && <Tab icon={<FavoriteIcon />} label="Liked" />}
+          <Tab icon={<MessageIcon />} label="Posts" />
+          {isOwnProfile && <Tab icon={<BookmarksIcon />} label="Saved" />}
+          {isOwnProfile && <Tab icon={<ThumbUpIcon />} label="Liked" />}
         </Tabs>
 
         <Box sx={{ p: 3 }}>

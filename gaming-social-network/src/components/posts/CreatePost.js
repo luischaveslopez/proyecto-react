@@ -29,26 +29,12 @@ import {
   EmojiEmotions as EmojiIcon,
   Close as CloseIcon
 } from '@mui/icons-material';
-
-const uploadImageToImgbb = async (file) => {
-  const apiKey = 'c219f99abffb6810a5c657dfc480d1f5'; 
-  const formData = new FormData();
-  formData.append('image', file);
-
-  const response = await fetch(`https://api.imgbb.com/1/upload?key=${apiKey}`, {
-    method: 'POST',
-    body: formData
-  });
-
-  const data = await response.json();
-
-  if (!data.success) {
-    throw new Error('Error uploading image');
-  }
-
-  return data.data.url; //link de la imagen del post
-};
-
+import { EmojiEvents as EmojiIcon2 } from '@mui/icons-material';
+import SubscriptionsIcon from '@mui/icons-material/Subscriptions';
+import { AddLink as LinkIcon2 } from '@mui/icons-material';
+import SupervisorAccountIcon from '@mui/icons-material/SupervisorAccount';
+import LockPersonIcon from '@mui/icons-material/LockPerson';
+import GamesIcon from '@mui/icons-material/Games';
 
 const CreatePost = ({ onPostCreated }) => {
   const [content, setContent] = useState('');
@@ -89,66 +75,49 @@ const CreatePost = ({ onPostCreated }) => {
 
   const handleSubmit = async (e) => {
     e.preventDefault();
-    const combinedText = `${content.trim()} ${link.trim()}`.trim();
-
-    if (!combinedText && !media) {
-    setError('Los post no pueden estar vacíos');
-    return;
-    }
-
-  
-    if (!currentUser) {
-      setError('Tienes que estar logueado para hacer un post');
+    if (!content.trim() && !media && !link) {
+      setError('Post cannot be empty');
       return;
     }
-  
+
+    if (!currentUser) {
+      setError('You must be logged in to create a post');
+      return;
+    }
+
     try {
       setLoading(true);
       setError('');
-  
+
       let mediaUrl = '';
       if (media) {
-        mediaUrl = await uploadImageToImgbb(media);
+        const mediaRef = ref(storage, `post-media/${Date.now()}_${media.name}`);
+        await uploadBytes(mediaRef, media);
+        mediaUrl = await getDownloadURL(mediaRef);
       }
-  
+
       if (link && !isValidUrl(link)) {
         setError('Please enter a valid URL');
         return;
       }
 
-        let finalContent = content.trim();
-        let finalLink = link.trim();
+      const postData = {
+        content,
+        mediaUrl,
+        mediaType,
+        link: link || '',
+        authorId: currentUser.uid,
+        timestamp: new Date().toISOString(),
+        likes: [],
+        comments: [],
+        privacy,
+        gameTag,
+        shares: 0,
+        type: mediaType || (link ? 'link' : 'text')
+      };
 
-        const isLinkOnly = isValidUrl(finalContent) && !finalLink;
-
-        if (isLinkOnly) {
-          finalLink = finalContent;
-          finalContent = '';
-        }
-
-        if (finalLink && finalContent.includes(finalLink)) {
-          finalContent = finalContent.replace(finalLink, '').trim();
-        }
-
-        const postData = {
-          content: finalContent,
-          link: finalLink,
-          mediaUrl,
-          mediaType,
-          authorId: currentUser.uid,
-          timestamp: new Date().toISOString(),
-          likes: [],
-          comments: [],
-          privacy,
-          gameTag,
-          shares: 0,
-          type: mediaType || (finalLink ? 'link' : 'text')
-        };
-        
-        
-  
       const docRef = await addDoc(collection(db, 'posts'), postData);
-  
+
       // Reset form
       setContent('');
       setMedia(null);
@@ -157,7 +126,7 @@ const CreatePost = ({ onPostCreated }) => {
       setShowLinkInput(false);
       setGameTag('');
       setPrivacy('public');
-  
+
       if (onPostCreated) {
         onPostCreated({ id: docRef.id, ...postData });
       }
@@ -168,9 +137,11 @@ const CreatePost = ({ onPostCreated }) => {
       setLoading(false);
     }
   };
-  
 
   return (
+
+    // Visual //
+
     <Box sx={{ width: '100%' }}>
       <Box sx={{ display: 'flex', alignItems: 'flex-start', gap: 2, mb: 2 }}>
         <Avatar
@@ -183,7 +154,7 @@ const CreatePost = ({ onPostCreated }) => {
             fullWidth
             multiline
             rows={3}
-            placeholder="What's on your gaming mind?"
+            placeholder="What's on your gamer mind?"
             value={content}
             onChange={(e) => setContent(e.target.value)}
             disabled={loading}
@@ -207,7 +178,7 @@ const CreatePost = ({ onPostCreated }) => {
             mb: 2,
             borderRadius: 1,
             overflow: 'hidden',
-            bgcolor: 'background.paper'
+            bgcolor: 'background.paper',
           }}
         >
           <IconButton
@@ -279,7 +250,7 @@ const CreatePost = ({ onPostCreated }) => {
                 color="primary"
                 size="small"
               >
-                {mediaType === 'video' ? <VideoIcon /> : <ImageIcon />}
+                {mediaType === 'video' ? <VideoIcon /> : <SubscriptionsIcon />}
               </IconButton>
             </Tooltip>
           </label>
@@ -291,16 +262,16 @@ const CreatePost = ({ onPostCreated }) => {
               color="primary"
               size="small"
             >
-              <LinkIcon />
+              <LinkIcon2 />
             </IconButton>
           </Tooltip>
 
-          <Tooltip title="Add emoji">
+          <Tooltip title="Add a emoji">
             <IconButton
               color="primary"
               size="small"
             >
-              <EmojiIcon />
+              <EmojiIcon2 />
             </IconButton>
           </Tooltip>
 
@@ -312,7 +283,7 @@ const CreatePost = ({ onPostCreated }) => {
               disabled={loading}
             >
               <MenuItem value="">
-                <GameIcon sx={{ mr: 1, fontSize: 20 }} /> Select Game
+                <GamesIcon sx={{ mr: 1, fontSize: 20 }} /> Select Game
               </MenuItem>
               <MenuItem value="minecraft">Minecraft</MenuItem>
               <MenuItem value="fortnite">Fortnite</MenuItem>
@@ -333,10 +304,10 @@ const CreatePost = ({ onPostCreated }) => {
                 <PublicIcon sx={{ mr: 1, fontSize: 20 }} /> Public
               </MenuItem>
               <MenuItem value="friends">
-                <GameIcon sx={{ mr: 1, fontSize: 20 }} /> Friends
+                <SupervisorAccountIcon sx={{ mr: 1, fontSize: 20 }} /> Friends
               </MenuItem>
               <MenuItem value="private">
-                <LockIcon sx={{ mr: 1, fontSize: 20 }} /> Private
+                <LockPersonIcon sx={{ mr: 1, fontSize: 20}} /> Private
               </MenuItem>
             </Select>
           </FormControl>

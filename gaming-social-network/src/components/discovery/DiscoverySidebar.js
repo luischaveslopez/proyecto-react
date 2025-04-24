@@ -40,6 +40,8 @@ import {
   Whatshot as TrendingIcon,
   EmojiEvents as AchievementIcon
 } from '@mui/icons-material';
+import SupervisedUserCircleIcon from '@mui/icons-material/SupervisedUserCircle';
+import ImportantDevicesIcon from '@mui/icons-material/ImportantDevices';
 
 const DiscoverySidebar = () => {
   const [suggestedFriends, setSuggestedFriends] = useState([]);
@@ -189,7 +191,12 @@ const DiscoverySidebar = () => {
         }}
       >
         <CardHeader
-          title="Suggested Friends"
+          title={
+            <Box display="flex" alignItems="center">
+              <SupervisedUserCircleIcon sx={{ mr: 1, color: 'primary.main' }} />
+              Suggested Friends
+            </Box>
+          }
           action={
             <Tooltip title="Refresh suggestions">
               <IconButton onClick={refreshSuggestions} size="small">
@@ -311,7 +318,7 @@ const DiscoverySidebar = () => {
       >
         <CardHeader
           title="Popular Games"
-          avatar={<GameIcon color="primary" />}
+          avatar={<ImportantDevicesIcon color="primary" />}
           sx={{
             pb: 1,
             '& .MuiCardHeader-title': {
