@@ -4,6 +4,7 @@ import { signInWithEmailAndPassword, signInWithPopup, GoogleAuthProvider } from 
 import { TextField, Button, Paper, Typography, Container, Box } from '@mui/material';
 import { useNavigate } from 'react-router-dom';
 import { ensureUserDocumentExists } from '../../firebase/userService'; // 🔥 Importar la función nueva
+import GoogleIcon from '@mui/icons-material/Google';
 
 const Login = () => {
   const [email, setEmail] = useState('');
@@ -79,7 +80,8 @@ const Login = () => {
             fullWidth
             variant="outlined"
             onClick={handleGoogleLogin}
-            sx={{ mb: 2 }}
+            sx={{ mb: 2, color: 'primary.main', borderColor: 'primary.main', '& .MuiButton-startIcon': { color: 'white' } }}
+            startIcon={<GoogleIcon />} // Agregar el icono de Google con color blanco
           >
             Sign In with Google
           </Button>

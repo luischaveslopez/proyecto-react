@@ -28,6 +28,7 @@ const Feed = () => {
   const [mobileSearchOpen, setMobileSearchOpen] = useState(false);
   const theme = useTheme();
   const isMobile = useMediaQuery(theme.breakpoints.down('md'));
+  const isDarkMode = theme.palette.mode === 'dark';
   const currentUser = auth.currentUser;
 
   useEffect(() => {
@@ -100,7 +101,7 @@ const Feed = () => {
     <Box 
       sx={{ 
         minHeight: '100vh',
-        bgcolor: 'background.default',
+        bgcolor: isDarkMode ? 'background.default' : 'background.paper',
         pt: { xs: 8, sm: 9 },
         pb: 4
       }}

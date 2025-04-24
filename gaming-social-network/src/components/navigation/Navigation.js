@@ -28,6 +28,7 @@ import {
   Person as PersonIcon,
   AdminPanelSettings as AdminIcon
 } from '@mui/icons-material';
+import HandymanIcon from '@mui/icons-material/Handyman';
 import { auth, db } from '../../firebase/config';
 import { signOut } from 'firebase/auth';
 import { useNotifications } from '../../contexts/NotificationContext';
@@ -39,6 +40,7 @@ const Navigation = () => {
   const [anchorEl, setAnchorEl] = useState(null);
   const [notificationAnchorEl, setNotificationAnchorEl] = useState(null);
   const [isAdmin, setIsAdmin] = useState(false);
+  const [isDarkMode, setIsDarkMode] = useState(true);
   const navigate = useNavigate();
   const { unreadCount } = useNotifications();
   const theme = useTheme();
@@ -98,6 +100,12 @@ const Navigation = () => {
   const handleAdmin = () => {
     navigate('/admin');
     handleClose();
+  };
+
+  const toggleTheme = () => {
+    const newTheme = isDarkMode ? 'light' : 'dark';
+    document.body.style.backgroundColor = newTheme === 'dark' ? '#18191c' : '#ffffff';
+    setIsDarkMode(!isDarkMode);
   };
 
   return (
@@ -234,7 +242,7 @@ const Navigation = () => {
                 </MenuItem>
                 <MenuItem onClick={handleSettings}>
                   <ListItemIcon>
-                    <SettingsIcon fontSize="small" />
+                    <HandymanIcon fontSize="small" />
                   </ListItemIcon>
                   Settings
                 </MenuItem>
@@ -310,6 +318,13 @@ const Navigation = () => {
               </Button>
             </Box>
           )}
+          <Button
+            onClick={toggleTheme}
+            variant="outlined"
+            sx={{ ml: 2 }}
+          >
+            {isDarkMode ? 'Light Mode' : 'Dark Mode'}
+          </Button>
         </Toolbar>
       </Container>
 

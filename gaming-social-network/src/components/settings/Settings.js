@@ -67,6 +67,7 @@ import {
   Visibility as VisibilityIcon,
   Edit as EditIcon
 } from '@mui/icons-material';
+import ManageAccountsIcon from '@mui/icons-material/ManageAccounts';
 import { useNavigate } from 'react-router-dom';
 
 const uploadImageToImgbb = async (file) => {
@@ -207,7 +208,7 @@ const Settings = () => {
   
       await currentUser.reload();
   
-      showSnackbar('Profile updated successfully', 'success');
+      showSnackbar('Profile updated successfully', 'success', { style: { color: 'white', fontWeight: 'bold' } });
       setAvatarFile(null);
       setAvatarPreview(null);
   
@@ -240,7 +241,7 @@ const Settings = () => {
       await updateDoc(userRef, {
         privacySettings
       });
-      showSnackbar('Privacy settings updated successfully', 'success');
+      showSnackbar('Privacy settings updated successfully', 'success', { style: { color: 'white' } });
     } catch (error) {
       console.error('Error updating privacy settings:', error);
       showSnackbar('Error updating privacy settings', 'error');
