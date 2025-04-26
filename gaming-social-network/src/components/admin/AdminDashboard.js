@@ -1,18 +1,25 @@
 import React, { useState, useEffect } from 'react';
 import { db, auth } from '../../firebase/config';
-import { 
-  collection, 
-  query, 
-  where, 
-  getDocs, 
-  updateDoc, 
-  doc, 
+import {
+  collection,
+  query,
+  where,
+  getDocs,
+  updateDoc,
+  doc,
   deleteDoc,
   orderBy,
   limit,
   startAfter,
-  addDoc
+  addDoc,
+  getDoc,
+  serverTimestamp
 } from 'firebase/firestore';
+import {
+  getContentRestrictions,
+  addContentRestriction,
+  deleteContentRestriction
+} from '../../firebase/contentRestrictionService';
 import {
   Container,
   Grid,
@@ -40,7 +47,8 @@ import {
   CircularProgress,
   Alert,
   useTheme,
-  Divider
+  Divider,
+  MenuItem
 } from '@mui/material';
 import {
   Block as BlockIcon,
@@ -52,8 +60,13 @@ import {
   Report as ReportIcon,
   Person as PersonIcon,
   Article as ContentIcon,
-  Flag as FlagIcon
+  Flag as FlagIcon,
+  Add as AddIcon,
+  TextFields as TextFieldsIcon,
+  Link as LinkIcon,
+  Code as CodeIcon
 } from '@mui/icons-material';
+
 import moment from 'moment';
 
 const AdminDashboard = () => {
@@ -61,13 +74,22 @@ const AdminDashboard = () => {
   const [users, setUsers] = useState([]);
   const [reports, setReports] = useState([]);
   const [flaggedContent, setFlaggedContent] = useState([]);
+  const [contentRestrictions, setContentRestrictions] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [restrictionDialog, setRestrictionDialog] = useState(false);
+  const [newRestriction, setNewRestriction] = useState({
+    type: 'word',
+    value: '',
+    message: ''
+  });
   const [selectedUser, setSelectedUser] = useState(null);
   const [suspensionDialog, setSuspensionDialog] = useState(false);
   const [suspensionReason, setSuspensionReason] = useState('');
   const [suspensionDuration, setSuspensionDuration] = useState('7');
   const [reportDetails, setReportDetails] = useState(null);
   const [reportDialog, setReportDialog] = useState(false);
+  const [warningMessage, setWarningMessage] = useState('');
+  const [warningDialog, setWarningDialog] = useState(false);
   const theme = useTheme();
 
   useEffect(() => {
@@ -86,6 +108,9 @@ const AdminDashboard = () => {
           break;
         case 2: // Flagged Content
           await fetchFlaggedContent();
+          break;
+        case 3: // Content Restrictions
+          await fetchContentRestrictions();
           break;
       }
     } catch (error) {
@@ -109,7 +134,6 @@ const AdminDashboard = () => {
     const reportsQuery = query(
       collection(db, 'reports'),
       where('status', '==', 'pending'),
-      orderBy('timestamp', 'desc'),
       limit(20)
     );
     const snapshot = await getDocs(reportsQuery);
@@ -120,11 +144,39 @@ const AdminDashboard = () => {
     const contentQuery = query(
       collection(db, 'posts'),
       where('flags', '>', 0),
-      orderBy('flags', 'desc'),
       limit(20)
     );
     const snapshot = await getDocs(contentQuery);
     setFlaggedContent(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
+  };
+
+  const fetchContentRestrictions = async () => {
+    try {
+      const restrictions = await getContentRestrictions();
+      setContentRestrictions(restrictions);
+    } catch (error) {
+      console.error('Error fetching content restrictions:', error);
+    }
+  };
+
+  const handleAddRestriction = async () => {
+    try {
+      await addContentRestriction(newRestriction);
+      setRestrictionDialog(false);
+      setNewRestriction({ type: 'word', value: '', message: '' });
+      fetchContentRestrictions();
+    } catch (error) {
+      console.error('Error adding restriction:', error);
+    }
+  };
+
+  const handleDeleteRestriction = async (restrictionId) => {
+    try {
+      await deleteContentRestriction(restrictionId);
+      fetchContentRestrictions();
+    } catch (error) {
+      console.error('Error deleting restriction:', error);
+    }
   };
 
   const handleSuspendUser = async () => {
@@ -169,12 +221,40 @@ const AdminDashboard = () => {
   const handleResolveReport = async (reportId, action) => {
     try {
       const reportRef = doc(db, 'reports', reportId);
+      const reportDoc = await getDoc(reportRef);
+      const reportData = reportDoc.data();
+
+      // Update report status
       await updateDoc(reportRef, {
         status: 'resolved',
         resolution: action,
-        resolvedAt: new Date().toISOString(),
+        resolvedAt: serverTimestamp(),
         resolvedBy: auth.currentUser.uid
       });
+
+      // Notify the reporter
+      await addDoc(collection(db, 'notifications'), {
+        userId: reportData.reporterId,
+        type: 'reportResolved',
+        message: `Your report has been reviewed and ${action}`,
+        timestamp: serverTimestamp(),
+        read: false
+      });
+
+      // If warning, notify reported user with custom message
+      if (action === 'warning') {
+        await addDoc(collection(db, 'notifications'), {
+          userId: reportData.reportedUserId,
+          type: 'warning',
+          message: warningMessage || 'You have received a warning from the administrators',
+          timestamp: serverTimestamp(),
+          read: false
+        });
+        setWarningDialog(false);
+        setWarningMessage('');
+      }
+
+      setReportDialog(false);
       fetchReports();
     } catch (error) {
       console.error('Error resolving report:', error);
@@ -184,7 +264,7 @@ const AdminDashboard = () => {
   const renderUsersList = () => (
     <List>
       {users.map(user => (
-        <ListItem 
+        <ListItem
           key={user.id}
           sx={{
             borderRadius: 1,
@@ -204,18 +284,18 @@ const AdminDashboard = () => {
               <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
                 {user.username}
                 {user.suspended && (
-                  <Chip 
-                    size="small" 
-                    label="Suspended" 
-                    color="error" 
+                  <Chip
+                    size="small"
+                    label="Suspended"
+                    color="error"
                     variant="outlined"
                   />
                 )}
                 {user.isAdmin && (
-                  <Chip 
-                    size="small" 
-                    label="Admin" 
-                    color="primary" 
+                  <Chip
+                    size="small"
+                    label="Admin"
+                    color="primary"
                     variant="outlined"
                   />
                 )}
@@ -225,8 +305,8 @@ const AdminDashboard = () => {
           />
           <ListItemSecondaryAction>
             <Tooltip title="Suspend User">
-              <IconButton 
-                edge="end" 
+              <IconButton
+                edge="end"
                 onClick={() => {
                   setSelectedUser(user);
                   setSuspensionDialog(true);
@@ -245,7 +325,7 @@ const AdminDashboard = () => {
   const renderReportsList = () => (
     <List>
       {reports.map(report => (
-        <ListItem 
+        <ListItem
           key={report.id}
           sx={{
             borderRadius: 1,
@@ -276,8 +356,8 @@ const AdminDashboard = () => {
           />
           <ListItemSecondaryAction>
             <Tooltip title="View Details">
-              <IconButton 
-                edge="end" 
+              <IconButton
+                edge="end"
                 onClick={() => {
                   setReportDetails(report);
                   setReportDialog(true);
@@ -295,7 +375,7 @@ const AdminDashboard = () => {
   const renderFlaggedContent = () => (
     <List>
       {flaggedContent.map(content => (
-        <ListItem 
+        <ListItem
           key={content.id}
           sx={{
             borderRadius: 1,
@@ -328,8 +408,8 @@ const AdminDashboard = () => {
           />
           <ListItemSecondaryAction>
             <Tooltip title="Delete Content">
-              <IconButton 
-                edge="end" 
+              <IconButton
+                edge="end"
                 onClick={() => handleDeleteContent(content.id)}
                 color="error"
               >
@@ -342,6 +422,71 @@ const AdminDashboard = () => {
     </List>
   );
 
+  const renderContentRestrictions = () => (
+    <Box>
+      <Box sx={{ mb: 3, display: 'flex', justifyContent: 'flex end' }}>
+        <Button
+          variant="contained"
+          startIcon={<AddIcon />}
+          onClick={() => setRestrictionDialog(true)}
+        >
+          Add Restriction
+        </Button>
+      </Box>
+      <List>
+        {contentRestrictions.map(restriction => (
+          <ListItem
+            key={restriction.id}
+            sx={{
+              borderRadius: 1,
+              mb: 1,
+              '&:hover': {
+                bgcolor: 'action.hover'
+              }
+            }}
+          >
+            <ListItemAvatar>
+              <Avatar sx={{ bgcolor: 'primary.main' }}>
+                {restriction.type === 'word' ? <TextFieldsIcon /> :
+                  restriction.type === 'link' ? <LinkIcon /> :
+                    <CodeIcon />}
+              </Avatar>
+            </ListItemAvatar>
+            <ListItemText
+              primary={restriction.value}
+              secondary={
+                <>
+                  <Typography variant="body2" component="span">
+                    Type: {restriction.type}
+                  </Typography>
+                  {restriction.message && (
+                    <>
+                      <br />
+                      <Typography variant="body2" color="text.secondary">
+                        Message: {restriction.message}
+                      </Typography>
+                    </>
+                  )}
+                </>
+              }
+            />
+            <ListItemSecondaryAction>
+              <Tooltip title="Delete Restriction">
+                <IconButton
+                  edge="end"
+                  onClick={() => handleDeleteRestriction(restriction.id)}
+                  color="error"
+                >
+                  <DeleteIcon />
+                </IconButton>
+              </Tooltip>
+            </ListItemSecondaryAction>
+          </ListItem>
+        ))}
+      </List>
+    </Box>
+  );
+
   return (
     <Container maxWidth="lg" sx={{ mt: 8, mb: 4 }}>
       <Paper sx={{ p: 3, borderRadius: 2 }}>
@@ -350,8 +495,8 @@ const AdminDashboard = () => {
           <Typography variant="h5" component="h1">
             Admin Dashboard
           </Typography>
-          <IconButton 
-            sx={{ ml: 'auto' }} 
+          <IconButton
+            sx={{ ml: 'auto' }}
             onClick={fetchData}
             disabled={loading}
           >
@@ -364,19 +509,24 @@ const AdminDashboard = () => {
           onChange={(e, newValue) => setCurrentTab(newValue)}
           sx={{ mb: 3 }}
         >
-          <Tab 
-            icon={<PersonIcon />} 
-            label="Users" 
+          <Tab
+            icon={<PersonIcon />}
+            label="Users"
             iconPosition="start"
           />
-          <Tab 
-            icon={<ReportIcon />} 
+          <Tab
+            icon={<ReportIcon />}
             label={`Reports ${reports.length ? `(${reports.length})` : ''}`}
             iconPosition="start"
           />
-          <Tab 
-            icon={<ContentIcon />} 
-            label="Flagged Content" 
+          <Tab
+            icon={<ContentIcon />}
+            label="Flagged Content"
+            iconPosition="start"
+          />
+          <Tab
+            icon={<BlockIcon />}
+            label="Content Restrictions"
             iconPosition="start"
           />
         </Tabs>
@@ -390,13 +540,14 @@ const AdminDashboard = () => {
             {currentTab === 0 && renderUsersList()}
             {currentTab === 1 && renderReportsList()}
             {currentTab === 2 && renderFlaggedContent()}
+            {currentTab === 3 && renderContentRestrictions()}
           </>
         )}
       </Paper>
 
       {/* Suspension Dialog */}
-      <Dialog 
-        open={suspensionDialog} 
+      <Dialog
+        open={suspensionDialog}
         onClose={() => setSuspensionDialog(false)}
         maxWidth="sm"
         fullWidth
@@ -427,7 +578,7 @@ const AdminDashboard = () => {
           <Button onClick={() => setSuspensionDialog(false)}>
             Cancel
           </Button>
-          <Button 
+          <Button
             onClick={handleSuspendUser}
             variant="contained"
             color="warning"
@@ -439,8 +590,8 @@ const AdminDashboard = () => {
       </Dialog>
 
       {/* Report Details Dialog */}
-      <Dialog 
-        open={reportDialog} 
+      <Dialog
+        open={reportDialog}
         onClose={() => setReportDialog(false)}
         maxWidth="sm"
         fullWidth
@@ -467,19 +618,21 @@ const AdminDashboard = () => {
           )}
         </DialogContent>
         <DialogActions>
-          <Button 
+          <Button
             onClick={() => handleResolveReport(reportDetails?.id, 'dismissed')}
             color="inherit"
           >
             Dismiss
           </Button>
-          <Button 
-            onClick={() => handleResolveReport(reportDetails?.id, 'warning')}
+          <Button
+            onClick={() => {
+              setWarningDialog(true);
+            }}
             color="warning"
           >
-            Warn User
+            Send Warning
           </Button>
-          <Button 
+          <Button
             onClick={() => {
               setSelectedUser({ id: reportDetails.reportedId });
               setSuspensionDialog(true);
@@ -489,6 +642,108 @@ const AdminDashboard = () => {
             color="error"
           >
             Suspend User
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* Warning Message Dialog */}
+      <Dialog
+        open={warningDialog}
+        onClose={() => setWarningDialog(false)}
+        maxWidth="sm"
+        fullWidth
+      >
+        <DialogTitle>
+          Send Warning to User
+        </DialogTitle>
+        <DialogContent>
+          <Box sx={{ mt: 2 }}>
+            <Typography variant="body2" gutterBottom>
+              Sending warning to: {reportDetails?.reportedName}
+            </Typography>
+            <TextField
+              label="Warning Message"
+              multiline
+              rows={4}
+              value={warningMessage}
+              onChange={(e) => setWarningMessage(e.target.value)}
+              fullWidth
+              sx={{ mt: 2 }}
+              placeholder="Enter a detailed warning message explaining the reason for the warning..."
+            />
+          </Box>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setWarningDialog(false)} color="inherit">
+            Cancel
+          </Button>
+          <Button
+            onClick={() => handleResolveReport(reportDetails?.id, 'warning')}
+            variant="contained"
+            color="warning"
+            disabled={!warningMessage}
+          >
+            Send Warning
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* Add Restriction Dialog */}
+      <Dialog
+        open={restrictionDialog}
+        onClose={() => setRestrictionDialog(false)}
+        maxWidth="sm"
+        fullWidth
+      >
+        <DialogTitle>
+          Add Content Restriction
+        </DialogTitle>
+        <DialogContent>
+          <Box sx={{ mt: 2, display: 'flex', flexDirection: 'column', gap: 2 }}>
+            <TextField
+              select
+              label="Restriction Type"
+              value={newRestriction.type}
+              onChange={(e) => setNewRestriction(prev => ({ ...prev, type: e.target.value }))}
+              fullWidth
+            >
+              <MenuItem value="word">Banned Word</MenuItem>
+              <MenuItem value="link">Restricted Link/Domain</MenuItem>
+              <MenuItem value="pattern">Custom Pattern</MenuItem>
+            </TextField>
+            <TextField
+              label={newRestriction.type === 'pattern' ? 'Regular Expression' : 'Value'}
+              value={newRestriction.value}
+              onChange={(e) => setNewRestriction(prev => ({ ...prev, value: e.target.value }))}
+              fullWidth
+              helperText={
+                newRestriction.type === 'word' ? 'Enter a word to ban' :
+                  newRestriction.type === 'link' ? 'Enter a domain or URL pattern' :
+                    'Enter a regular expression pattern'
+              }
+            />
+            <TextField
+              label="Custom Message"
+              value={newRestriction.message}
+              onChange={(e) => setNewRestriction(prev => ({ ...prev, message: e.target.value }))}
+              fullWidth
+              multiline
+              rows={2}
+              helperText="Message to show when content is restricted (optional)"
+            />
+          </Box>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setRestrictionDialog(false)} color="inherit">
+            Cancel
+          </Button>
+          <Button
+            onClick={handleAddRestriction}
+            variant="contained"
+            color="primary"
+            disabled={!newRestriction.value}
+          >
+            Add Restriction
           </Button>
         </DialogActions>
       </Dialog>

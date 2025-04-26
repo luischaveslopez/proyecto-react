@@ -28,7 +28,6 @@ const Feed = () => {
   const [mobileSearchOpen, setMobileSearchOpen] = useState(false);
   const theme = useTheme();
   const isMobile = useMediaQuery(theme.breakpoints.down('md'));
-  const isDarkMode = theme.palette.mode === 'dark';
   const currentUser = auth.currentUser;
 
   useEffect(() => {
@@ -45,41 +44,52 @@ const Feed = () => {
 
     const setupPostsListener = async () => {
       if (!currentUser) return;
-
+    
       try {
         setLoading(true);
         const userDoc = await getDoc(doc(db, 'users', currentUser.uid));
         const userData = userDoc.exists() ? userDoc.data() : { following: [], friends: [] };
-        
-        const relevantUsers = [...new Set([
-          ...(userData.following || []),
-          ...(userData.friends || []),
-          currentUser.uid
-        ])];
-
+    
         const postsQuery = query(
           collection(db, 'posts'),
-          where('authorId', 'in', relevantUsers),
           orderBy('timestamp', 'desc')
         );
-
+    
         unsubscribe = onSnapshot(postsQuery, (snapshot) => {
-          const fetchedPosts = snapshot.docs.map(doc => ({
+          const allPosts = snapshot.docs.map(doc => ({
             id: doc.id,
             ...doc.data()
           }));
-          setPosts(fetchedPosts);
+    
+          const relevantUsers = [
+            ...new Set([
+              ...(userData.following || []),
+              ...(userData.friends || []),
+              currentUser.uid
+            ])
+          ];
+    
+          const filteredPosts = allPosts.filter(post => {
+            return (
+              post.privacy === 'public' || // public
+              post.authorId === currentUser.uid || // private
+              (post.privacy === 'friends' && relevantUsers.includes(post.authorId)) // friends
+            );
+          });
+    
+          setPosts(filteredPosts);
           setLoading(false);
         }, (error) => {
           console.error('Error fetching posts:', error);
           setLoading(false);
         });
-
+    
       } catch (error) {
         console.error('Error setting up posts listener:', error);
         setLoading(false);
       }
     };
+    
 
     setupPostsListener();
 
@@ -101,7 +111,7 @@ const Feed = () => {
     <Box 
       sx={{ 
         minHeight: '100vh',
-        bgcolor: isDarkMode ? 'background.default' : 'background.paper',
+        bgcolor: 'background.default',
         pt: { xs: 8, sm: 9 },
         pb: 4
       }}

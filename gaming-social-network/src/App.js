@@ -1,4 +1,4 @@
-import React from 'react';
+import React,  { Suspense } from 'react';
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
 import { ThemeProvider, createTheme } from '@mui/material';
 import { NotificationProvider } from './contexts/NotificationContext';
@@ -13,6 +13,7 @@ import AdminDashboard from './components/admin/AdminDashboard';
 import AdminRoute from './components/admin/AdminRoute';
 import { auth } from './firebase/config';
 import { useAuthState } from 'react-firebase-hooks/auth';
+import ChatWindow from './components/messages/ChatWindow';
 
 // Protected Route component
 const ProtectedRoute = ({ children }) => {
@@ -152,6 +153,16 @@ function App() {
                   <Profile />
                 </ProtectedRoute>
               } 
+            />
+            <Route 
+              path="/messages/:friendId"
+              element={
+                <ProtectedRoute>
+                  <React.Suspense fallback={<div>Loading...</div>}>
+                    <ChatWindow />
+                  </React.Suspense>
+                </ProtectedRoute>
+              }
             />
             <Route 
               path="/settings" 

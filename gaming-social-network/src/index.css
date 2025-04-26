@@ -15,11 +15,6 @@ body {
   --background-color: #18191c; /* Dark theme background */
 }
 
-code {
-  font-family: source-code-pro, Menlo, Monaco, Consolas, 'Courier New',
-    monospace;
-}
-
 /* Custom scrollbar */
 ::-webkit-scrollbar {
   width: 8px;

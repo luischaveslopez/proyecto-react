@@ -29,9 +29,70 @@ import {
 import { useNavigate } from 'react-router-dom';
 import debounce from 'lodash/debounce';
 
+const fetchUsersAndPosts = async (term) => {
+  const lowerCaseTerm = term.toLowerCase();
+
+  try {
+    console.log('Fetching users, posts, and mail for term:', lowerCaseTerm);
+
+    // Fetch users
+    const usersQuery = query(
+      collection(db, 'users'),
+      where('email', '>=', lowerCaseTerm),
+      where('email', '<=', lowerCaseTerm + '\uf8ff')
+    );
+    console.log('Users query:', usersQuery);
+    const usersSnapshot = await getDocs(usersQuery);
+    console.log('Users snapshot:', usersSnapshot);
+    const users = usersSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+    console.log('Fetched users:', users);
+
+    // Fetch posts
+    const postsQuery = query(
+      collection(db, 'posts'),
+      where('content', '>=', lowerCaseTerm),
+      where('content', '<=', lowerCaseTerm + '\uf8ff')
+    );
+    console.log('Posts query:', postsQuery);
+    const postsSnapshot = await getDocs(postsQuery);
+    console.log('Posts snapshot:', postsSnapshot);
+    const posts = postsSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+    console.log('Fetched posts:', posts);
+
+    // Fetch games
+    const gamesQuery = query(
+      collection(db, 'games'),
+      where('name', '>=', lowerCaseTerm),
+      where('name', '<=', lowerCaseTerm + '\uf8ff')
+    );
+    console.log('Games query:', gamesQuery);
+    const gamesSnapshot = await getDocs(gamesQuery);
+    console.log('Games snapshot:', gamesSnapshot);
+    const games = gamesSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+    console.log('Fetched Games:', games);
+
+    // Fetch mail
+    const mailQuery = query(
+      collection(db, 'mail'),
+      where('username', '>=', lowerCaseTerm),
+      where('username', '<=', lowerCaseTerm + '\uf8ff')
+    );
+    console.log('Mail query:', mailQuery);
+    const mailSnapshot = await getDocs(mailQuery);
+    console.log('Mail snapshot:', mailSnapshot);
+    const mail = mailSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+    console.log('Fetched mail:', mail);
+
+    return { users, posts, mail };
+  } catch (error) {
+    console.error('Error fetching users, posts, and mail:', error);
+    throw error;
+  }
+};
+
 const SearchBar = () => {
   const [searchTerm, setSearchTerm] = useState('');
-  const [searchResults, setSearchResults] = useState({ users: [], posts: [] });
+  const [searchResults, setSearchResults] = useState({ users: [], posts: [], mail: [] });
   const [loading, setLoading] = useState(false);
   const [anchorEl, setAnchorEl] = useState(null);
   const theme = useTheme();
@@ -39,38 +100,16 @@ const SearchBar = () => {
 
   const handleSearch = async (term) => {
     if (!term.trim()) {
-      setSearchResults({ users: [], posts: [] });
+      setSearchResults({ users: [], posts: [], mail: [] });
       return;
     }
 
     setLoading(true);
     try {
-      // Search users
-      const usersQuery = query(
-        collection(db, 'users'),
-        where('searchTerms', 'array-contains', term.toLowerCase()),
-        limit(5)
-      );
-
-      // Search posts
-      const postsQuery = query(
-        collection(db, 'posts'),
-        where('hashtags', 'array-contains', term.toLowerCase()),
-        orderBy('timestamp', 'desc'),
-        limit(5)
-      );
-
-      const [usersSnapshot, postsSnapshot] = await Promise.all([
-        getDocs(usersQuery),
-        getDocs(postsQuery)
-      ]);
-
-      setSearchResults({
-        users: usersSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })),
-        posts: postsSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }))
-      });
+      const results = await fetchUsersAndPosts(term);
+      setSearchResults(results);
     } catch (error) {
-      console.error('Error searching:', error);
+      console.error('Error fetching search results:', error);
     } finally {
       setLoading(false);
     }
@@ -78,12 +117,11 @@ const SearchBar = () => {
 
   const debouncedSearch = debounce(handleSearch, 300);
 
-  useEffect(() => {
-    if (searchTerm) {
+  const handleKeyDown = (event) => {
+    if (event.key === 'Enter') {
       debouncedSearch(searchTerm);
     }
-    return () => debouncedSearch.cancel();
-  }, [searchTerm]);
+  };
 
   const handleInputChange = (event) => {
     const value = event.target.value;
@@ -93,7 +131,7 @@ const SearchBar = () => {
 
   const handleClear = () => {
     setSearchTerm('');
-    setSearchResults({ users: [], posts: [] });
+    setSearchResults({ users: [], posts: [], mail: [] });
     setAnchorEl(null);
   };
 
@@ -107,7 +145,12 @@ const SearchBar = () => {
     handleClear();
   };
 
-  const open = Boolean(anchorEl) && (searchResults.users.length > 0 || searchResults.posts.length > 0);
+  const handleMailClick = (mailId) => {
+    navigate(`/mail/${mailId}`);
+    handleClear();
+  };
+
+  const open = Boolean(anchorEl) && (searchResults.users.length > 0 || searchResults.posts.length > 0 || searchResults.mail.length > 0);
 
   return (
     <Box sx={{ position: 'relative', width: '100%', maxWidth: 600 }}>
@@ -115,6 +158,7 @@ const SearchBar = () => {
         fullWidth
         value={searchTerm}
         onChange={handleInputChange}
+        onKeyDown={handleKeyDown}
         placeholder="Search users, posts, or hashtags..."
         variant="outlined"
         size="small"
@@ -204,7 +248,7 @@ const SearchBar = () => {
                       </ListItem>
                     ))}
                   </List>
-                  {searchResults.posts.length > 0 && <Divider />}
+                  {(searchResults.posts.length > 0 || searchResults.mail.length > 0) && <Divider />}
                 </>
               )}
 
@@ -249,6 +293,38 @@ const SearchBar = () => {
                       </ListItem>
                     ))}
                   </List>
+                  {searchResults.mail.length > 0 && <Divider />}
+                </>
+              )}
+
+              {searchResults.mail.length > 0 && (
+                <>
+                  <Typography variant="subtitle2" sx={{ p: 2, pb: 1 }}>
+                    Mail
+                  </Typography>
+                  <List dense>
+                    {searchResults.mail.map(mail => (
+                      <ListItem 
+                        key={mail.id}
+                        button
+                        onClick={() => handleMailClick(mail.id)}
+                        sx={{
+                          '&:hover': {
+                            bgcolor: 'action.hover'
+                          }
+                        }}
+                      >
+                        <ListItemText
+                          primary={mail.username}
+                          secondary={mail.subject}
+                          primaryTypographyProps={{
+                            variant: 'body2',
+                            color: 'text.primary'
+                          }}
+                        />
+                      </ListItem>
+                    ))}
+                  </List>
                 </>
               )}
             </Paper>
@@ -258,5 +334,4 @@ const SearchBar = () => {
     </Box>
   );
 };
-
 export default SearchBar;

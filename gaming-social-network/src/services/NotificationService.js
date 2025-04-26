@@ -18,22 +18,27 @@ export const createNotification = async (userId, notification) => {
       emailSent: false
     };
 
+    // Crear la notificación en Firestore (campanita)
     await addDoc(collection(db, 'users', userId, 'notifications'), notificationData);
 
-    // Trigger email notification through Cloud Function
-    await addDoc(collection(db, 'mail'), {
-      to: notification.userEmail,
-      template: {
-        name: notification.type.toLowerCase(),
-        data: {
-          ...notification
+    // Solo enviar correo si hay email
+    if (notification.userEmail && notification.userEmail.includes('@')) {
+      await addDoc(collection(db, 'mail'), {
+        to: notification.userEmail,
+        template: {
+          name: notification.type.toLowerCase(),
+          data: {
+            ...notification
+          }
         }
-      }
-    });
+      });
+    }
+
   } catch (error) {
     console.error('Error creating notification:', error);
   }
 };
+
 
 export const createLikeNotification = async (userId, userEmail, postData, likedByUser) => {
   await createNotification(userId, {

@@ -1,6 +1,7 @@
-import React, { useState } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
+import EmojiPicker from 'emoji-picker-react';
 import { db, storage, auth } from '../../firebase/config';
-import { collection, addDoc } from 'firebase/firestore';
+import { collection, addDoc, doc, getDoc, setDoc, updateDoc, increment } from 'firebase/firestore';
 import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 import {
   Box,
@@ -29,12 +30,35 @@ import {
   EmojiEmotions as EmojiIcon,
   Close as CloseIcon
 } from '@mui/icons-material';
+import { checkInappropriateContent } from '../../utils/moderation';
 import { EmojiEvents as EmojiIcon2 } from '@mui/icons-material';
 import SubscriptionsIcon from '@mui/icons-material/Subscriptions';
 import { AddLink as LinkIcon2 } from '@mui/icons-material';
 import SupervisorAccountIcon from '@mui/icons-material/SupervisorAccount';
 import LockPersonIcon from '@mui/icons-material/LockPerson';
 import GamesIcon from '@mui/icons-material/Games';
+
+
+
+const uploadImageToImgbb = async (file) => {
+  const apiKey = 'c219f99abffb6810a5c657dfc480d1f5'; 
+  const formData = new FormData();
+  formData.append('image', file);
+
+  const response = await fetch(`https://api.imgbb.com/1/upload?key=${apiKey}`, {
+    method: 'POST',
+    body: formData
+  });
+
+  const data = await response.json();
+
+  if (!data.success) {
+    throw new Error('Error uploading image');
+  }
+
+  return data.data.url; //image link
+};
+
 
 const CreatePost = ({ onPostCreated }) => {
   const [content, setContent] = useState('');
@@ -46,8 +70,23 @@ const CreatePost = ({ onPostCreated }) => {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [gameTag, setGameTag] = useState('');
+  const [showEmojiPicker, setShowEmojiPicker] = useState(false);
   const theme = useTheme();
   const currentUser = auth.currentUser;
+  const emojiPickerRef = useRef(null);
+
+  useEffect(() => {
+    const handleClickOutside = (event) => {
+      if (emojiPickerRef.current && !emojiPickerRef.current.contains(event.target)) {
+        setShowEmojiPicker(false);
+      }
+    };
+
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+    };
+  }, []);
 
   const handleMediaChange = (e) => {
     const file = e.target.files[0];
@@ -73,51 +112,102 @@ const CreatePost = ({ onPostCreated }) => {
     }
   };
 
+  const updateGamePopularity = async (gameTag) => {
+    if (!gameTag) return;
+
+    try {
+      const gameRef = doc(db, 'games', gameTag);
+      const gameDoc = await getDoc(gameRef);
+
+      if (gameDoc.exists()) {
+        // Update existing game document
+        await updateDoc(gameRef, {
+          postCount: increment(1),
+          players: increment(1),
+          lastUpdated: new Date().toISOString()
+        });
+      } else {
+        // Create new game document
+        const gameData = {
+          id: gameTag,
+          name: gameTag.charAt(0).toUpperCase() + gameTag.slice(1), // Capitalize game name
+          postCount: 1,
+          players: 1,
+          imageUrl: '', // Default empty for now
+          trending: false,
+          lastUpdated: new Date().toISOString()
+        };
+        await setDoc(gameRef, gameData);
+      }
+    } catch (error) {
+      console.error('Error updating game popularity:', error);
+    }
+  };
+
   const handleSubmit = async (e) => {
     e.preventDefault();
-    if (!content.trim() && !media && !link) {
-      setError('Post cannot be empty');
-      return;
+    const combinedText = `${content.trim()} ${link.trim()}`.trim();
+
+    if (!combinedText && !media) {
+    setError('Los post no pueden estar vacíos');
+    return;
     }
 
+  
     if (!currentUser) {
-      setError('You must be logged in to create a post');
+      setError('Tienes que estar logueado para hacer un post');
       return;
     }
-
+  
     try {
       setLoading(true);
       setError('');
-
+  
       let mediaUrl = '';
       if (media) {
-        const mediaRef = ref(storage, `post-media/${Date.now()}_${media.name}`);
-        await uploadBytes(mediaRef, media);
-        mediaUrl = await getDownloadURL(mediaRef);
+        mediaUrl = await uploadImageToImgbb(media);
       }
-
+  
       if (link && !isValidUrl(link)) {
         setError('Please enter a valid URL');
         return;
       }
 
-      const postData = {
-        content,
-        mediaUrl,
-        mediaType,
-        link: link || '',
-        authorId: currentUser.uid,
-        timestamp: new Date().toISOString(),
-        likes: [],
-        comments: [],
-        privacy,
-        gameTag,
-        shares: 0,
-        type: mediaType || (link ? 'link' : 'text')
-      };
+        let finalContent = content.trim();
+        let finalLink = link.trim();
 
+        const isLinkOnly = isValidUrl(finalContent) && !finalLink;
+
+        if (isLinkOnly) {
+          finalLink = finalContent;
+          finalContent = '';
+        }
+
+        if (finalLink && finalContent.includes(finalLink)) {
+          finalContent = finalContent.replace(finalLink, '').trim();
+        }
+
+        const isInappropriate = checkInappropriateContent(content);
+
+
+        const postData = {
+          content: finalContent,
+          link: finalLink,
+          mediaUrl,
+          mediaType,
+          authorId: currentUser.uid,
+          timestamp: new Date().toISOString(),
+          likes: [],
+          comments: [],
+          privacy,
+          gameTag,
+          shares: 0,
+          type: mediaType || (finalLink ? 'link' : 'text'),
+          flags: isInappropriate ? 1 : 0
+        };
+  
       const docRef = await addDoc(collection(db, 'posts'), postData);
-
+  
       // Reset form
       setContent('');
       setMedia(null);
@@ -126,6 +216,11 @@ const CreatePost = ({ onPostCreated }) => {
       setShowLinkInput(false);
       setGameTag('');
       setPrivacy('public');
+  
+      // Update game popularity if a game tag was selected
+      if (gameTag) {
+        await updateGamePopularity(gameTag);
+      }
 
       if (onPostCreated) {
         onPostCreated({ id: docRef.id, ...postData });
@@ -137,11 +232,9 @@ const CreatePost = ({ onPostCreated }) => {
       setLoading(false);
     }
   };
+  
 
   return (
-
-    // Visual //
-
     <Box sx={{ width: '100%' }}>
       <Box sx={{ display: 'flex', alignItems: 'flex-start', gap: 2, mb: 2 }}>
         <Avatar
@@ -178,7 +271,7 @@ const CreatePost = ({ onPostCreated }) => {
             mb: 2,
             borderRadius: 1,
             overflow: 'hidden',
-            bgcolor: 'background.paper',
+            bgcolor: 'background.paper'
           }}
         >
           <IconButton
@@ -266,14 +359,43 @@ const CreatePost = ({ onPostCreated }) => {
             </IconButton>
           </Tooltip>
 
-          <Tooltip title="Add a emoji">
+          <Tooltip title="Add emoji">
             <IconButton
               color="primary"
               size="small"
+              onClick={() => setShowEmojiPicker(!showEmojiPicker)}
             >
               <EmojiIcon2 />
             </IconButton>
           </Tooltip>
+          {showEmojiPicker && (
+            <Box
+              ref={emojiPickerRef}
+              sx={{
+                position: 'absolute',
+                zIndex: 1000,
+                mt: 2,
+                boxShadow: theme.shadows[8],
+                borderRadius: 2,
+                bgcolor: 'background.paper',
+                '.EmojiPickerReact': {
+                  border: 'none',
+                  boxShadow: 'none',
+                  '--epr-bg-color': 'transparent',
+                  '--epr-category-label-bg-color': theme.palette.background.default
+                }
+              }}
+            >
+              <EmojiPicker
+                onEmojiClick={(emojiObject) => {
+                  setContent((prevContent) => prevContent + emojiObject.emoji);
+                  setShowEmojiPicker(false);
+                }}
+                width={300}
+                height={400}
+              />
+            </Box>
+          )}
 
           <FormControl size="small" sx={{ minWidth: 120 }}>
             <Select
@@ -289,6 +411,10 @@ const CreatePost = ({ onPostCreated }) => {
               <MenuItem value="fortnite">Fortnite</MenuItem>
               <MenuItem value="cod">Call of Duty</MenuItem>
               <MenuItem value="lol">League of Legends</MenuItem>
+              <MenuItem value="valorant">Valorant</MenuItem>
+              <MenuItem value="gta">GTA V</MenuItem>
+              <MenuItem value="csgo">CS:GO</MenuItem>
+              <MenuItem value="apex">Apex Legends</MenuItem>
             </Select>
           </FormControl>
         </Box>
@@ -304,10 +430,10 @@ const CreatePost = ({ onPostCreated }) => {
                 <PublicIcon sx={{ mr: 1, fontSize: 20 }} /> Public
               </MenuItem>
               <MenuItem value="friends">
-                <SupervisorAccountIcon sx={{ mr: 1, fontSize: 20 }} /> Friends
+              <SupervisorAccountIcon sx={{ mr: 1, fontSize: 20 }} /> Friends
               </MenuItem>
               <MenuItem value="private">
-                <LockPersonIcon sx={{ mr: 1, fontSize: 20}} /> Private
+              <LockPersonIcon sx={{ mr: 1, fontSize: 20}} /> Private
               </MenuItem>
             </Select>
           </FormControl>

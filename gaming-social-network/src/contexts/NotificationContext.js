@@ -1,7 +1,8 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
 import { db, auth } from '../firebase/config';
-import { collection, query, orderBy, onSnapshot, where } from 'firebase/firestore';
+import { collection, query, orderBy, onSnapshot } from 'firebase/firestore';
 import { getFunctions, httpsCallable } from 'firebase/functions';
+import { useAuthState } from 'react-firebase-hooks/auth';
 
 const NotificationContext = createContext();
 
@@ -14,13 +15,14 @@ export const useNotifications = () => {
 };
 
 export const NotificationProvider = ({ children }) => {
+  const [user, loadingUser] = useAuthState(auth);
   const [notifications, setNotifications] = useState([]);
   const [unreadCount, setUnreadCount] = useState(0);
   const [loading, setLoading] = useState(true);
   const functions = getFunctions();
 
   useEffect(() => {
-    const user = auth.currentUser;
+    if (loadingUser) return;
     if (!user) {
       setNotifications([]);
       setUnreadCount(0);
@@ -28,18 +30,24 @@ export const NotificationProvider = ({ children }) => {
       return;
     }
 
-    // Subscribe to notifications
     const notificationsQuery = query(
       collection(db, 'users', user.uid, 'notifications'),
       orderBy('timestamp', 'desc')
     );
 
     const unsubscribe = onSnapshot(notificationsQuery, (snapshot) => {
+      const seen = new Set();
       const newNotifications = snapshot.docs.map(doc => ({
         id: doc.id,
         ...doc.data(),
         timestamp: doc.data().timestamp?.toDate() || new Date()
-      }));
+      })).filter(n => {
+        if (n.type === 'FRIEND_REQUEST') {
+          if (seen.has(n.actionUser?.id)) return false;
+          seen.add(n.actionUser?.id);
+        }
+        return true;
+      });
 
       setNotifications(newNotifications);
       setUnreadCount(newNotifications.filter(n => !n.read).length);
@@ -47,7 +55,7 @@ export const NotificationProvider = ({ children }) => {
     });
 
     return () => unsubscribe();
-  }, []);
+  }, [user, loadingUser]);
 
   const markAsRead = async (notificationIds) => {
     try {

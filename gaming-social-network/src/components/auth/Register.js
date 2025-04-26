@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
-import { auth, db } from '../../firebase/config';
-import { createUserWithEmailAndPassword } from 'firebase/auth';
-import { doc, setDoc, serverTimestamp } from 'firebase/firestore';
+import { auth } from '../../firebase/config';
+import { createUserWithEmailAndPassword, updateProfile } from 'firebase/auth';
+import { ensureUserDocumentExists } from '../../firebase/userService';
 import { TextField, Button, Paper, Typography, Container, Box } from '@mui/material';
 import { useNavigate } from 'react-router-dom';
 
@@ -41,31 +41,15 @@ const Register = () => {
       const userCredential = await createUserWithEmailAndPassword(auth, email, password);
       const user = userCredential.user;
 
-      // Create user profile in Firestore
-      await setDoc(doc(db, 'users', user.uid), {
-        username,
-        email,
-        createdAt: serverTimestamp(), 
-        bio: '',
-        location: '',
-        photoURL: '',
-        followers: [],
-        following: [],
-        friends: [],
-        friendRequests: {
-          sent: [],
-          received: []
-        },
-        posts: [],
-        notifications: [],
-        gamingInterests: [],
-        favoriteGames: [],
-        socialLinks: {
-          twitter: '',
-          twitch: '',
-          discord: ''
-        },
-        profileVisibility: 'public'
+      // Update user profile with username
+      await updateProfile(user, {
+        displayName: username
+      });
+
+      // Create user document with default settings
+      await ensureUserDocumentExists({
+        ...user,
+        displayName: username
       });
 
       navigate('/');

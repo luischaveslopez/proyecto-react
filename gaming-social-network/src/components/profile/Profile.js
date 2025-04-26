@@ -1,6 +1,14 @@
 import React, { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { auth, db } from '../../firebase/config';
+import { isUserBlocked, blockUser, reportUser } from '../../firebase/userService';
+import { 
+  checkProfileVisibility, 
+  checkPostsVisibility, 
+  checkFriendsListVisibility,
+  canSendMessage,
+  canSendFriendRequest 
+} from '../../firebase/privacyService';
 import {
   doc,
   getDoc,
@@ -80,6 +88,11 @@ const Profile = () => {
   const [savedPosts, setSavedPosts] = useState([]);
   const [likedPosts, setLikedPosts] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [canViewProfile, setCanViewProfile] = useState(false);
+  const [canViewPosts, setCanViewPosts] = useState(false);
+  const [canViewFriends, setCanViewFriends] = useState(false);
+  const [canMessage, setCanMessage] = useState(false);
+  const [canAddFriend, setCanAddFriend] = useState(false);
   const [currentTab, setCurrentTab] = useState(0);
   const [friendsDialog, setFriendsDialog] = useState(false);
   const [menuAnchorEl, setMenuAnchorEl] = useState(null);
@@ -88,12 +101,48 @@ const Profile = () => {
   const [snackbar, setSnackbar] = useState({ open: false, message: '', severity: 'success' });
 
   const isOwnProfile = currentUser?.uid === userId;
-  const isDarkMode = theme.palette.mode === 'dark';
+
+  const [isBlocked, setIsBlocked] = useState(false);
 
   useEffect(() => {
-    fetchProfileData();
-    fetchPosts();
+    const initializeProfile = async () => {
+      await checkBlockStatus();
+      await checkPrivacyPermissions();
+      await fetchProfileData();
+    };
+    
+    initializeProfile();
   }, [userId]);
+
+  const checkPrivacyPermissions = async () => {
+    if (currentUser && userId) {
+      const [profileVisible, postsVisible, friendsVisible, messageAllowed, friendRequestAllowed] = await Promise.all([
+        checkProfileVisibility(userId, currentUser.uid),
+        checkPostsVisibility(userId, currentUser.uid),
+        checkFriendsListVisibility(userId, currentUser.uid),
+        canSendMessage(userId, currentUser.uid),
+        canSendFriendRequest(userId)
+      ]);
+
+      setCanViewProfile(profileVisible);
+      setCanViewPosts(postsVisible);
+      setCanViewFriends(friendsVisible);
+      setCanMessage(messageAllowed);
+      setCanAddFriend(friendRequestAllowed);
+
+      // If profile is visible, fetch posts
+      if (postsVisible) {
+        fetchPosts();
+      }
+    }
+  };
+
+  const checkBlockStatus = async () => {
+    if (currentUser && userId) {
+      const blocked = await isUserBlocked(currentUser.uid, userId);
+      setIsBlocked(blocked);
+    }
+  };
 
   const fetchProfileData = async () => {
     try {
@@ -206,14 +255,15 @@ const Profile = () => {
 
   const handleBlockUser = async () => {
     try {
-      const userRef = doc(db, 'users', currentUser.uid);
-      await updateDoc(userRef, {
-        blockedUsers: arrayUnion(userId)
-      });
-
-      showSnackbar('User blocked successfully', 'success');
-      setMenuAnchorEl(null);
-      navigate('/');
+      const success = await blockUser(currentUser.uid, userId);
+      
+      if (success) {
+        showSnackbar('User blocked successfully', 'success');
+        setMenuAnchorEl(null);
+        navigate('/');
+      } else {
+        throw new Error('Failed to block user');
+      }
     } catch (error) {
       console.error('Error blocking user:', error);
       showSnackbar('Error blocking user', 'error');
@@ -222,16 +272,14 @@ const Profile = () => {
 
   const handleReport = async () => {
     try {
-      await addDoc(collection(db, 'reports'), {
-        reportedUserId: userId,
-        reporterId: currentUser.uid,
-        reason: reportReason,
-        timestamp: serverTimestamp(),
-        status: 'pending'
-      });
-
-      setReportDialog(false);
-      showSnackbar('User reported successfully', 'success');
+      const success = await reportUser(currentUser.uid, userId, reportReason);
+      
+      if (success) {
+        setReportDialog(false);
+        showSnackbar('User reported successfully', 'success');
+      } else {
+        throw new Error('Failed to report user');
+      }
     } catch (error) {
       console.error('Error reporting user:', error);
       showSnackbar('Error reporting user', 'error');
@@ -261,16 +309,22 @@ const Profile = () => {
     );
   }
 
-  if (!profileData) {
+  if (!profileData || isBlocked || (!isOwnProfile && !canViewProfile)) {
     return (
       <Container maxWidth="lg" sx={{ mt: 8 }}>
-        <Alert severity="error">User not found</Alert>
+        <Alert severity="error">
+          {!profileData ? "User not found" : 
+           isBlocked ? "You cannot view this profile" :
+           "This profile is private"}
+        </Alert>
       </Container>
     );
   }
 
+  // Disable messaging if blocked
+  const disableMessaging = isBlocked || !canMessage;
+
   const isFriend = profileData.friends?.includes(currentUser?.uid);
-  const isBlocked = profileData.blockedUsers?.includes(currentUser?.uid);
 
   return (
     <Container maxWidth="lg" sx={{ mt: 8, mb: 4 }}>
@@ -329,21 +383,30 @@ const Profile = () => {
               )}
               {!isOwnProfile && (
                 <Box sx={{ ml: 'auto' }}>
-                  <Button
-                    variant="contained"
-                    startIcon={isFriend ? <PersonRemoveIcon /> : <PersonAddIcon />}
-                    onClick={isFriend ? handleRemoveFriend : handleAddFriend}
-                    sx={{ mr: 1 }}
-                  >
-                    {isFriend ? 'Remove Friend' : 'Add Friend'}
-                  </Button>
-                  <Button
-                    variant="outlined"
-                    startIcon={<MessageIcon />}
-                    onClick={() => navigate(`/messages/${userId}`)}
-                  >
-                    Message
-                  </Button>
+                  {(isFriend || canAddFriend) && (
+                    <Button
+                      variant="contained"
+                      startIcon={isFriend ? <PersonRemoveIcon /> : <PersonAddIcon />}
+                      onClick={isFriend ? handleRemoveFriend : handleAddFriend}
+                      sx={{ mr: 1 }}
+                    >
+                      {isFriend ? 'Remove Friend' : 'Add Friend'}
+                    </Button>
+                  )}
+                  <Tooltip title={
+                    disableMessaging ? "You cannot message this user" : ""
+                  }>
+                    <span>
+                      <Button
+                        variant="outlined"
+                        startIcon={<MessageIcon />}
+                        onClick={() => navigate(`/messages/${userId}`)}
+                        disabled={disableMessaging}
+                      >
+                        Message
+                      </Button>
+                    </span>
+                  </Tooltip>
                   <IconButton onClick={(e) => setMenuAnchorEl(e.currentTarget)}>
                     <MoreVertIcon />
                   </IconButton>
@@ -356,17 +419,25 @@ const Profile = () => {
                 {profileData.bio || 'No bio added yet'}
               </Typography>
               <Box sx={{ display: 'flex', gap: 3 }}>
-                <Typography 
-                  variant="body2" 
-                  color="text.secondary"
-                  sx={{ cursor: 'pointer' }}
-                  onClick={() => setFriendsDialog(true)}
-                >
-                  <strong>{profileData.friends?.length || 0}</strong> friends
-                </Typography>
-                <Typography variant="body2" color="text.secondary">
-                  <strong>{posts.length}</strong> posts
-                </Typography>
+                {(isOwnProfile || canViewFriends) ? (
+                  <Typography 
+                    variant="body2" 
+                    color="text.secondary"
+                    sx={{ cursor: 'pointer' }}
+                    onClick={() => setFriendsDialog(true)}
+                  >
+                    <strong>{profileData.friends?.length || 0}</strong> friends
+                  </Typography>
+                ) : (
+                  <Typography variant="body2" color="text.secondary">
+                    Friends list is private
+                  </Typography>
+                )}
+                {(isOwnProfile || canViewPosts) && (
+                  <Typography variant="body2" color="text.secondary">
+                    <strong>{posts.length}</strong> posts
+                  </Typography>
+                )}
                 {profileData.gamesPlayed?.length > 0 && (
                   <Typography variant="body2" color="text.secondary">
                     <strong>{profileData.gamesPlayed.length}</strong> games played
@@ -409,7 +480,13 @@ const Profile = () => {
           {currentTab === 0 && (
             <>
               {isOwnProfile && <CreatePost onPostCreated={fetchPosts} />}
-              <PostList posts={posts} onPostUpdate={fetchPosts} />
+              {(isOwnProfile || canViewPosts) ? (
+                <PostList posts={posts} onPostUpdate={fetchPosts} />
+              ) : (
+                <Alert severity="info" sx={{ mt: 2 }}>
+                  Posts are only visible to friends
+                </Alert>
+              )}
             </>
           )}
           {currentTab === 1 && isOwnProfile && (
@@ -422,20 +499,22 @@ const Profile = () => {
       </Paper>
 
       {/* Friends Dialog */}
-      <Dialog
-        open={friendsDialog}
-        onClose={() => setFriendsDialog(false)}
-        maxWidth="sm"
-        fullWidth
-      >
-        <DialogTitle>Friends</DialogTitle>
-        <DialogContent>
-          <FriendsList userId={userId} />
-        </DialogContent>
-        <DialogActions>
-          <Button onClick={() => setFriendsDialog(false)}>Close</Button>
-        </DialogActions>
-      </Dialog>
+      {(isOwnProfile || canViewFriends) && (
+        <Dialog
+          open={friendsDialog}
+          onClose={() => setFriendsDialog(false)}
+          maxWidth="sm"
+          fullWidth
+        >
+          <DialogTitle>Friends</DialogTitle>
+          <DialogContent>
+            <FriendsList userId={userId} />
+          </DialogContent>
+          <DialogActions>
+            <Button onClick={() => setFriendsDialog(false)}>Close</Button>
+          </DialogActions>
+        </Dialog>
+      )}
 
       {/* More Options Menu */}
       <Menu

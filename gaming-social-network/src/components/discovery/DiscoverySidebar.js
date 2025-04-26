@@ -1,13 +1,14 @@
 import React, { useState, useEffect } from 'react';
 import { db, auth } from '../../firebase/config';
-import { 
-  collection, 
-  query, 
-  where, 
-  getDocs, 
-  limit, 
-  orderBy, 
-  doc, 
+import { createFriendRequestNotification } from '../../services/NotificationService';
+import {
+  collection,
+  query,
+  where,
+  getDocs,
+  limit,
+  orderBy,
+  doc,
   getDoc,
   updateDoc,
   arrayUnion
@@ -40,9 +41,9 @@ import {
   Whatshot as TrendingIcon,
   EmojiEvents as AchievementIcon
 } from '@mui/icons-material';
-import SupervisedUserCircleIcon from '@mui/icons-material/SupervisedUserCircle';
 import ImportantDevicesIcon from '@mui/icons-material/ImportantDevices';
-
+import SupervisedUserCircleIcon from '@mui/icons-material/SupervisedUserCircle';
+ 
 const DiscoverySidebar = () => {
   const [suggestedFriends, setSuggestedFriends] = useState([]);
   const [trendingPosts, setTrendingPosts] = useState([]);
@@ -51,10 +52,10 @@ const DiscoverySidebar = () => {
   const [snackbar, setSnackbar] = useState({ open: false, message: '', severity: 'success' });
   const theme = useTheme();
   const currentUser = auth.currentUser;
-
+ 
   const fetchSuggestedFriends = async () => {
     if (!currentUser) return;
-
+  
     try {
       // Get current user's data
       const userDocRef = doc(db, 'users', currentUser.uid);
@@ -62,22 +63,35 @@ const DiscoverySidebar = () => {
       const userData = userDocSnap.data();
       const userInterests = userData?.interests || [];
       const userFriends = userData?.friends || [];
-
-      // Query users with similar interests who aren't already friends
-      const usersQuery = query(
-        collection(db, 'users'),
-        where('interests', 'array-contains-any', userInterests.length ? userInterests : ['gaming']),
-        where('uid', 'not-in', [...userFriends, currentUser.uid]),
-        limit(5)
+  
+      // Query a larger set of users based on interests or general pool
+      const baseQuery = userInterests.length > 0
+        ? query(
+            collection(db, 'users'),
+            where('interests', 'array-contains-any', userInterests),
+            limit(20)
+          )
+        : query(
+            collection(db, 'users'),
+            limit(20)
+          );
+  
+      const usersSnapshot = await getDocs(baseQuery);
+      const allUsers = usersSnapshot.docs.map(doc => ({
+        id: doc.id,
+        ...doc.data()
+      }));
+  
+      // Filter out current user and already added friends
+      const filteredUsers = allUsers.filter(user =>
+        user.id !== currentUser.uid && !userFriends.includes(user.id)
       );
-
-      const usersSnapshot = await getDocs(usersQuery);
-      setSuggestedFriends(
-        usersSnapshot.docs.map(doc => ({
-          id: doc.id,
-          ...doc.data()
-        }))
-      );
+  
+      // Shuffle and limit to 5 suggestions
+      const shuffled = filteredUsers.sort(() => Math.random() - 0.5);
+      const selected = shuffled.slice(0, 5);
+  
+      setSuggestedFriends(selected);
     } catch (error) {
       console.error('Error fetching suggested friends:', error);
       setSnackbar({
@@ -87,7 +101,7 @@ const DiscoverySidebar = () => {
       });
     }
   };
-
+  
   const fetchTrendingPosts = async () => {
     try {
       const postsQuery = query(
@@ -95,7 +109,7 @@ const DiscoverySidebar = () => {
         orderBy('likes', 'desc'),
         limit(3)
       );
-
+ 
       const postsSnapshot = await getDocs(postsQuery);
       setTrendingPosts(
         postsSnapshot.docs.map(doc => ({
@@ -107,15 +121,15 @@ const DiscoverySidebar = () => {
       console.error('Error fetching trending posts:', error);
     }
   };
-
+ 
   const fetchPopularGames = async () => {
     try {
       const gamesQuery = query(
         collection(db, 'games'),
-        orderBy('players', 'desc'),
+        orderBy('postCount', 'desc'),
         limit(5)
       );
-
+ 
       const gamesSnapshot = await getDocs(gamesQuery);
       setPopularGames(
         gamesSnapshot.docs.map(doc => ({
@@ -127,7 +141,7 @@ const DiscoverySidebar = () => {
       console.error('Error fetching popular games:', error);
     }
   };
-
+ 
   const refreshSuggestions = () => {
     setLoading(true);
     Promise.all([
@@ -136,38 +150,40 @@ const DiscoverySidebar = () => {
       fetchPopularGames()
     ]).finally(() => setLoading(false));
   };
-
+ 
   useEffect(() => {
     refreshSuggestions();
   }, [currentUser]);
-
+ 
   const handleAddFriend = async (userId) => {
     if (!currentUser) return;
-
+  
     try {
-      const userRef = doc(db, 'users', currentUser.uid);
-      const friendRef = doc(db, 'users', userId);
-
-      // Add to current user's friends list
-      await updateDoc(userRef, {
-        friends: arrayUnion(userId)
-      });
-
-      // Add to friend's friends list
-      await updateDoc(friendRef, {
-        friends: arrayUnion(currentUser.uid)
-      });
-
+      const userDoc = await getDoc(doc(db, 'users', currentUser.uid));
+      const userData = userDoc.data();
+  
+      const friendDoc = await getDoc(doc(db, 'users', userId));
+      const friendData = friendDoc.data();
+  
+      await createFriendRequestNotification(
+        userId,
+        friendData.email,
+        {
+          uid: currentUser.uid,
+          username: userData.username,
+          photoURL: userData.photoURL
+        }
+      );
+  
       setSnackbar({
         open: true,
-        message: 'Friend request sent successfully!',
+        message: 'Friend request sent!',
         severity: 'success'
       });
-
-      // Refresh suggestions
+  
       refreshSuggestions();
     } catch (error) {
-      console.error('Error adding friend:', error);
+      console.error('Error sending friend request:', error);
       setSnackbar({
         open: true,
         message: 'Error sending friend request',
@@ -175,16 +191,17 @@ const DiscoverySidebar = () => {
       });
     }
   };
-
+  
+ 
   const handleCloseSnackbar = () => {
     setSnackbar(prev => ({ ...prev, open: false }));
   };
-
+ 
   return (
     <Box sx={{ width: '100%', maxWidth: 360 }}>
       {/* Suggested Friends */}
-      <Card 
-        sx={{ 
+      <Card
+        sx={{
           mb: 2,
           borderRadius: 2,
           boxShadow: theme.shadows[2]
@@ -261,10 +278,10 @@ const DiscoverySidebar = () => {
           )}
         </List>
       </Card>
-
+ 
       {/* Trending Posts */}
-      <Card 
-        sx={{ 
+      <Card
+        sx={{
           mb: 2,
           borderRadius: 2,
           boxShadow: theme.shadows[2]
@@ -308,10 +325,10 @@ const DiscoverySidebar = () => {
           )}
         </CardContent>
       </Card>
-
+ 
       {/* Popular Games */}
-      <Card 
-        sx={{ 
+      <Card
+        sx={{
           borderRadius: 2,
           boxShadow: theme.shadows[2]
         }}
@@ -350,7 +367,7 @@ const DiscoverySidebar = () => {
                 </ListItemAvatar>
                 <ListItemText
                   primary={game.name}
-                  secondary={`${game.players} active players`}
+                  secondary={`${game.postCount || 0} posts`}
                 />
                 {game.trending && (
                   <AchievementIcon color="primary" fontSize="small" />
@@ -369,7 +386,7 @@ const DiscoverySidebar = () => {
           )}
         </List>
       </Card>
-
+ 
       {/* Snackbar for notifications */}
       <Snackbar
         open={snackbar.open}
@@ -377,8 +394,8 @@ const DiscoverySidebar = () => {
         onClose={handleCloseSnackbar}
         anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }}
       >
-        <Alert 
-          onClose={handleCloseSnackbar} 
+        <Alert
+          onClose={handleCloseSnackbar}
           severity={snackbar.severity}
           variant="filled"
           sx={{ width: '100%' }}
@@ -389,5 +406,6 @@ const DiscoverySidebar = () => {
     </Box>
   );
 };
-
+ 
 export default DiscoverySidebar;
+

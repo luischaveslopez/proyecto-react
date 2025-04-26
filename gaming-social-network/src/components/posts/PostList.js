@@ -27,8 +27,6 @@ const PostList = ({
     if (observer.current) observer.current.disconnect();
     observer.current = new IntersectionObserver(entries => {
       if (entries[0].isIntersecting && hasMore) {
-        // Here you would typically load more posts
-        // For now, we'll just use the existing posts array
         if (posts.length < POSTS_PER_PAGE) {
           setHasMore(false);
         }

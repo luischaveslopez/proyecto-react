@@ -67,8 +67,8 @@ import {
   Visibility as VisibilityIcon,
   Edit as EditIcon
 } from '@mui/icons-material';
-import ManageAccountsIcon from '@mui/icons-material/ManageAccounts';
 import { useNavigate } from 'react-router-dom';
+import ManageAccountsIcon from '@mui/icons-material/ManageAccounts';
 
 const uploadImageToImgbb = async (file) => {
   const apiKey = 'c219f99abffb6810a5c657dfc480d1f5'; // API de imgbb
@@ -208,7 +208,7 @@ const Settings = () => {
   
       await currentUser.reload();
   
-      showSnackbar('Profile updated successfully', 'success', { style: { color: 'white', fontWeight: 'bold' } });
+      showSnackbar('Profile updated successfully', 'success');
       setAvatarFile(null);
       setAvatarPreview(null);
   
@@ -238,14 +238,47 @@ const Settings = () => {
   const handleSavePrivacySettings = async () => {
     try {
       const userRef = doc(db, 'users', currentUser.uid);
+      
+      // Update privacy settings in Firestore
       await updateDoc(userRef, {
-        privacySettings
+        privacySettings: {
+          ...privacySettings,
+          updatedAt: serverTimestamp()
+        }
       });
-      showSnackbar('Privacy settings updated successfully', 'success', { style: { color: 'white' } });
+
+      // Update local user data
+      setUserData(prev => ({
+        ...prev,
+        privacySettings: {
+          ...privacySettings,
+          updatedAt: new Date()
+        }
+      }));
+
+      // Show success message
+      showSnackbar('Privacy settings updated successfully', 'success');
+
+      // Fetch updated user data to ensure UI reflects current state
+      await fetchUserData();
     } catch (error) {
       console.error('Error updating privacy settings:', error);
       showSnackbar('Error updating privacy settings', 'error');
     }
+  };
+
+  const handlePrivacyToggle = (setting) => (event) => {
+    setPrivacySettings(prev => ({
+      ...prev,
+      [setting]: event.target.checked ? 'public' : 'private'
+    }));
+  };
+
+  const handleBooleanToggle = (setting) => (event) => {
+    setPrivacySettings(prev => ({
+      ...prev,
+      [setting]: event.target.checked
+    }));
   };
 
   const handleSaveNotificationSettings = async () => {
@@ -474,77 +507,108 @@ const Settings = () => {
                     Privacy Settings
                   </Typography>
                   <FormGroup>
+                    <Typography variant="subtitle2" color="text.secondary" paragraph>
+                      Control who can see your profile and interact with you
+                    </Typography>
                     <FormControlLabel
                       control={
                         <Switch
                           checked={privacySettings.profileVisibility === 'public'}
-                          onChange={(e) => setPrivacySettings(prev => ({
-                            ...prev,
-                            profileVisibility: e.target.checked ? 'public' : 'private'
-                          }))}
+                          onChange={handlePrivacyToggle('profileVisibility')}
                         />
                       }
-                      label="Public Profile"
+                      label={
+                        <Box>
+                          <Typography>Public Profile</Typography>
+                          <Typography variant="caption" color="text.secondary">
+                            When disabled, only friends can view your full profile
+                          </Typography>
+                        </Box>
+                      }
                     />
                     <FormControlLabel
                       control={
                         <Switch
                           checked={privacySettings.postsVisibility === 'public'}
-                          onChange={(e) => setPrivacySettings(prev => ({
-                            ...prev,
-                            postsVisibility: e.target.checked ? 'public' : 'private'
-                          }))}
+                          onChange={handlePrivacyToggle('postsVisibility')}
                         />
                       }
-                      label="Public Posts"
+                      label={
+                        <Box>
+                          <Typography>Public Posts</Typography>
+                          <Typography variant="caption" color="text.secondary">
+                            When disabled, only friends can see your posts
+                          </Typography>
+                        </Box>
+                      }
                     />
                     <FormControlLabel
                       control={
                         <Switch
                           checked={privacySettings.friendsListVisibility === 'public'}
-                          onChange={(e) => setPrivacySettings(prev => ({
-                            ...prev,
-                            friendsListVisibility: e.target.checked ? 'public' : 'private'
-                          }))}
+                          onChange={handlePrivacyToggle('friendsListVisibility')}
                         />
                       }
-                      label="Public Friends List"
+                      label={
+                        <Box>
+                          <Typography>Public Friends List</Typography>
+                          <Typography variant="caption" color="text.secondary">
+                            When disabled, only friends can see your friends list
+                          </Typography>
+                        </Box>
+                      }
                     />
+                    <Divider sx={{ my: 2 }} />
+                    <Typography variant="subtitle2" color="text.secondary" paragraph>
+                      Control how others can interact with you
+                    </Typography>
                     <FormControlLabel
                       control={
                         <Switch
                           checked={privacySettings.showOnlineStatus}
-                          onChange={(e) => setPrivacySettings(prev => ({
-                            ...prev,
-                            showOnlineStatus: e.target.checked
-                          }))}
+                          onChange={handleBooleanToggle('showOnlineStatus')}
                         />
                       }
-                      label="Show Online Status"
+                      label={
+                        <Box>
+                          <Typography>Show Online Status</Typography>
+                          <Typography variant="caption" color="text.secondary">
+                            Let others see when you're online
+                          </Typography>
+                        </Box>
+                      }
                     />
                     <FormControlLabel
                       control={
                         <Switch
                           checked={privacySettings.allowFriendRequests}
-                          onChange={(e) => setPrivacySettings(prev => ({
-                            ...prev,
-                            allowFriendRequests: e.target.checked
-                          }))}
+                          onChange={handleBooleanToggle('allowFriendRequests')}
                         />
                       }
-                      label="Allow Friend Requests"
+                      label={
+                        <Box>
+                          <Typography>Allow Friend Requests</Typography>
+                          <Typography variant="caption" color="text.secondary">
+                            Let others send you friend requests
+                          </Typography>
+                        </Box>
+                      }
                     />
                     <FormControlLabel
                       control={
                         <Switch
                           checked={privacySettings.allowMessages}
-                          onChange={(e) => setPrivacySettings(prev => ({
-                            ...prev,
-                            allowMessages: e.target.checked
-                          }))}
+                          onChange={handleBooleanToggle('allowMessages')}
                         />
                       }
-                      label="Allow Direct Messages"
+                      label={
+                        <Box>
+                          <Typography>Allow Direct Messages</Typography>
+                          <Typography variant="caption" color="text.secondary">
+                            Let others send you direct messages
+                          </Typography>
+                        </Box>
+                      }
                     />
                     <Button
                       variant="contained"

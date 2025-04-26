@@ -28,20 +28,20 @@ import {
   Person as PersonIcon,
   AdminPanelSettings as AdminIcon
 } from '@mui/icons-material';
-import HandymanIcon from '@mui/icons-material/Handyman';
 import { auth, db } from '../../firebase/config';
 import { signOut } from 'firebase/auth';
 import { useNotifications } from '../../contexts/NotificationContext';
 import NotificationList from '../notifications/NotificationList';
 import SearchBar from '../search/SearchBar';
 import { doc, getDoc } from 'firebase/firestore';
+import HandymanIcon from '@mui/icons-material/Handyman';
 
 const Navigation = () => {
   const [anchorEl, setAnchorEl] = useState(null);
   const [notificationAnchorEl, setNotificationAnchorEl] = useState(null);
   const [isAdmin, setIsAdmin] = useState(false);
-  const [isDarkMode, setIsDarkMode] = useState(true);
   const navigate = useNavigate();
+  const [isDarkMode, setIsDarkMode] = useState(true);
   const { unreadCount } = useNotifications();
   const theme = useTheme();
   const isMobile = useMediaQuery(theme.breakpoints.down('sm'));
@@ -60,10 +60,18 @@ const Navigation = () => {
     };
 
     checkAdminStatus();
+
+    // Cleanup function to clear anchor elements when component unmounts
+    return () => {
+      setAnchorEl(null);
+      setNotificationAnchorEl(null);
+    };
   }, [currentUser]);
 
   const handleMenu = (event) => {
-    setAnchorEl(event.currentTarget);
+    if (event.currentTarget) {
+      setAnchorEl(event.currentTarget);
+    }
   };
 
   const handleClose = () => {
@@ -71,7 +79,9 @@ const Navigation = () => {
   };
 
   const handleNotificationClick = (event) => {
-    setNotificationAnchorEl(event.currentTarget);
+    if (event.currentTarget) {
+      setNotificationAnchorEl(event.currentTarget);
+    }
   };
 
   const handleNotificationClose = () => {
@@ -80,6 +90,7 @@ const Navigation = () => {
 
   const handleLogout = async () => {
     try {
+      handleClose(); // Close menu before logout
       await signOut(auth);
       navigate('/login');
     } catch (error) {
@@ -88,18 +99,18 @@ const Navigation = () => {
   };
 
   const handleProfile = () => {
+    handleClose(); // Close menu before navigation
     navigate(`/profile/${currentUser.uid}`);
-    handleClose();
   };
 
   const handleSettings = () => {
+    handleClose(); // Close menu before navigation
     navigate('/settings');
-    handleClose();
   };
 
   const handleAdmin = () => {
+    handleClose(); // Close menu before navigation
     navigate('/admin');
-    handleClose();
   };
 
   const toggleTheme = () => {
@@ -107,6 +118,10 @@ const Navigation = () => {
     document.body.style.backgroundColor = newTheme === 'dark' ? '#18191c' : '#ffffff';
     setIsDarkMode(!isDarkMode);
   };
+
+  // Check if menu should be open - only if anchorEl exists and is in the document
+  const isMenuOpen = Boolean(anchorEl) && document.contains(anchorEl);
+  const isNotificationOpen = Boolean(notificationAnchorEl) && document.contains(notificationAnchorEl);
 
   return (
     <AppBar 
@@ -153,178 +168,188 @@ const Navigation = () => {
           )}
 
           {/* Navigation Actions */}
-          {currentUser ? (
-            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-              {isAdmin && (
-                <Tooltip title="Admin Dashboard">
-                  <IconButton
-                    color="primary"
-                    onClick={handleAdmin}
-                    sx={{ 
-                      bgcolor: theme.palette.action.hover,
-                      '&:hover': {
-                        bgcolor: theme.palette.action.selected
-                      }
-                    }}
-                  >
-                    <AdminIcon />
-                  </IconButton>
-                </Tooltip>
-              )}
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+            {currentUser ? (
+              <> 
+                {isAdmin && (
+                  <Tooltip title="Admin Dashboard">
+                    <IconButton
+                      color="primary"
+                      onClick={handleAdmin}
+                      sx={{ 
+                        bgcolor: theme.palette.action.hover,
+                        '&:hover': {
+                          bgcolor: theme.palette.action.selected
+                        }
+                      }}
+                    >
+                      <AdminIcon />
+                    </IconButton>
+                  </Tooltip>
+                )}
 
-              <IconButton
-                color="primary"
-                onClick={handleNotificationClick}
-                sx={{ 
-                  bgcolor: theme.palette.action.hover,
-                  '&:hover': {
-                    bgcolor: theme.palette.action.selected
-                  }
-                }}
-              >
-                <Badge 
-                  badgeContent={unreadCount} 
-                  color="error"
-                  sx={{
-                    '& .MuiBadge-badge': {
-                      bgcolor: theme.palette.error.main,
-                      color: 'white'
+                <IconButton
+                  color="primary"
+                  onClick={handleNotificationClick}
+                  sx={{ 
+                    bgcolor: theme.palette.action.hover,
+                    '&:hover': {
+                      bgcolor: theme.palette.action.selected
                     }
                   }}
                 >
-                  <NotificationsIcon />
-                </Badge>
-              </IconButton>
+                  <Badge 
+                    badgeContent={unreadCount} 
+                    color="error"
+                    sx={{
+                      '& .MuiBadge-badge': {
+                        bgcolor: theme.palette.error.main,
+                        color: 'white'
+                      }
+                    }}
+                  >
+                    <NotificationsIcon />
+                  </Badge>
+                </IconButton>
 
-              <IconButton
-                onClick={handleMenu}
-                sx={{ 
-                  p: 0.5,
-                  border: `2px solid ${theme.palette.primary.main}`,
-                  '&:hover': {
-                    bgcolor: theme.palette.action.hover
-                  }
-                }}
-              >
-                <Avatar
-                  src={currentUser.photoURL}
-                  sx={{ width: 32, height: 32 }}
+                <IconButton
+                  onClick={handleMenu}
+                  sx={{ 
+                    p: 0.5,
+                    border: `2px solid ${theme.palette.primary.main}`,
+                    '&:hover': {
+                      bgcolor: theme.palette.action.hover
+                    }
+                  }}
                 >
-                  {currentUser.displayName?.[0] || currentUser.email?.[0]}
-                </Avatar>
-              </IconButton>
+                  <Avatar
+                    src={currentUser.photoURL}
+                    sx={{ width: 32, height: 32 }}
+                  >
+                    {currentUser.displayName?.[0] || currentUser.email?.[0]}
+                  </Avatar>
+                </IconButton>
 
-              <Menu
-                anchorEl={anchorEl}
-                open={Boolean(anchorEl)}
-                onClose={handleClose}
-                anchorOrigin={{
-                  vertical: 'bottom',
-                  horizontal: 'right',
-                }}
-                transformOrigin={{
-                  vertical: 'top',
-                  horizontal: 'right',
-                }}
-                PaperProps={{
-                  sx: {
-                    mt: 1.5,
-                    borderRadius: 2,
-                    minWidth: 200
-                  }
-                }}
-              >
-                <MenuItem onClick={handleProfile}>
-                  <ListItemIcon>
-                    <PersonIcon fontSize="small" />
-                  </ListItemIcon>
-                  Profile
-                </MenuItem>
-                <MenuItem onClick={handleSettings}>
-                  <ListItemIcon>
-                    <HandymanIcon fontSize="small" />
-                  </ListItemIcon>
-                  Settings
-                </MenuItem>
-                {isAdmin && (
-                  <MenuItem onClick={handleAdmin}>
-                    <ListItemIcon>
-                      <AdminIcon fontSize="small" />
-                    </ListItemIcon>
-                    Admin Dashboard
-                  </MenuItem>
+                {anchorEl && (
+                  <Menu
+                    id="menu-appbar"
+                    anchorEl={anchorEl}
+                    open={isMenuOpen}
+                    onClose={handleClose}
+                    onClick={handleClose}
+                    anchorOrigin={{
+                      vertical: 'bottom',
+                      horizontal: 'right',
+                    }}
+                    transformOrigin={{
+                      vertical: 'top',
+                      horizontal: 'right',
+                    }}
+                    PaperProps={{
+                      sx: {
+                        mt: 1.5,
+                        borderRadius: 2,
+                        minWidth: 200
+                      }
+                    }}
+                  >
+                    <MenuItem onClick={handleProfile}>
+                      <ListItemIcon>
+                        <PersonIcon fontSize="small" />
+                      </ListItemIcon>
+                      Profile
+                    </MenuItem>
+                    <MenuItem onClick={handleSettings}>
+                      <ListItemIcon>
+                      <HandymanIcon fontSize="small" />
+                      </ListItemIcon>
+                      Settings
+                    </MenuItem>
+                    {isAdmin && (
+                      <MenuItem onClick={handleAdmin}>
+                        <ListItemIcon>
+                          <AdminIcon fontSize="small" />
+                        </ListItemIcon>
+                        Admin Dashboard
+                      </MenuItem>
+                    )}
+                    <Divider />
+                    <MenuItem 
+                      onClick={handleLogout}
+                      sx={{ color: theme.palette.error.main }}
+                    >
+                      <ListItemIcon>
+                        <LogoutIcon fontSize="small" color="error" />
+                      </ListItemIcon>
+                      Logout
+                    </MenuItem>
+                  </Menu>
                 )}
-                <Divider />
-                <MenuItem 
-                  onClick={handleLogout}
-                  sx={{ color: theme.palette.error.main }}
-                >
-                  <ListItemIcon>
-                    <LogoutIcon fontSize="small" color="error" />
-                  </ListItemIcon>
-                  Logout
-                </MenuItem>
-              </Menu>
 
-              <Popover
-                open={Boolean(notificationAnchorEl)}
-                anchorEl={notificationAnchorEl}
-                onClose={handleNotificationClose}
-                anchorOrigin={{
-                  vertical: 'bottom',
-                  horizontal: 'right',
-                }}
-                transformOrigin={{
-                  vertical: 'top',
-                  horizontal: 'right',
-                }}
-                PaperProps={{
-                  sx: {
-                    mt: 1.5,
-                    width: 360,
-                    maxWidth: '100%',
-                    borderRadius: 2
-                  }
-                }}
-              >
-                <NotificationList onClose={handleNotificationClose} />
-              </Popover>
-            </Box>
-          ) : (
-            <Box sx={{ display: 'flex', gap: 1 }}>
-              <Button
-                variant="outlined"
-                color="primary"
-                component={RouterLink}
-                to="/login"
-                sx={{ 
-                  borderRadius: 2,
-                  textTransform: 'none'
-                }}
-              >
-                Login
-              </Button>
-              <Button
-                variant="contained"
-                color="primary"
-                component={RouterLink}
-                to="/register"
-                sx={{ 
-                  borderRadius: 2,
-                  textTransform: 'none'
-                }}
-              >
-                Register
-              </Button>
-            </Box>
-          )}
-          <Button
-            onClick={toggleTheme}
-            variant="outlined"
-            sx={{ ml: 2 }}
-          >
-            {isDarkMode ? 'Light Mode' : 'Dark Mode'}
-          </Button>
+                {notificationAnchorEl && (
+                  <Popover
+                    open={isNotificationOpen}
+                    anchorEl={notificationAnchorEl}
+                    onClose={handleNotificationClose}
+                    onClick={handleNotificationClose}
+                    anchorOrigin={{
+                      vertical: 'bottom',
+                      horizontal: 'right',
+                    }}
+                    transformOrigin={{
+                      vertical: 'top',
+                      horizontal: 'right',
+                    }}
+                    PaperProps={{
+                      sx: {
+                        mt: 1.5,
+                        width: 360,
+                        maxWidth: '100%',
+                        borderRadius: 2
+                      }
+                    }}
+                  >
+                    <NotificationList onClose={handleNotificationClose} />
+                  </Popover>
+                )}
+              </>
+            ) : (
+              <>
+                <Button
+                  variant="outlined"
+                  color="primary"
+                  component={RouterLink}
+                  to="/login"
+                  sx={{ 
+                    borderRadius: 2,
+                    textTransform: 'none'
+                  }}
+                >
+                  Login
+                </Button>
+                <Button
+                  variant="contained"
+                  color="primary"
+                  component={RouterLink}
+                  to="/register"
+                  sx={{ 
+                    borderRadius: 2,
+                    textTransform: 'none'
+                  }}
+                >
+                  Register
+                </Button>
+              </>
+            )}
+            {/* Theme toggle button */}
+            <Button
+              onClick={toggleTheme}
+              variant="outlined"
+              sx={{ ml: 2 }}
+            >
+              {isDarkMode ? 'Light Mode' : 'Dark Mode'}
+            </Button>
+          </Box>
         </Toolbar>
       </Container>
 

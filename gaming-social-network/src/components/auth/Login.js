@@ -1,22 +1,29 @@
 import React, { useState } from 'react';
 import { auth } from '../../firebase/config';
 import { signInWithEmailAndPassword, signInWithPopup, GoogleAuthProvider } from 'firebase/auth';
-import { TextField, Button, Paper, Typography, Container, Box } from '@mui/material';
+import { TextField, Button, Paper, Typography, Container, Box, Switch, FormControlLabel } from '@mui/material';
 import { useNavigate } from 'react-router-dom';
-import { ensureUserDocumentExists } from '../../firebase/userService'; // 🔥 Importar la función nueva
+import { ensureUserDocumentExists } from '../../firebase/userService';
 import GoogleIcon from '@mui/icons-material/Google';
 
 const Login = () => {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
+  const [isAdminMode, setIsAdminMode] = useState(false);
   const navigate = useNavigate();
 
   const handleLogin = async (e) => {
     e.preventDefault();
     try {
-      await signInWithEmailAndPassword(auth, email, password);
-      navigate('/');
+      const result = await signInWithEmailAndPassword(auth, email, password);
+      await ensureUserDocumentExists(result.user);
+      // Check if it's admin login
+      if (email === 'admin@gmail.com') {
+        navigate('/admin');
+      } else {
+        navigate('/');
+      }
     } catch (error) {
       setError(error.message);
     }
@@ -27,9 +34,7 @@ const Login = () => {
     try {
       const result = await signInWithPopup(auth, provider);
       const user = result.user;
-
       await ensureUserDocumentExists(user);
-
       navigate('/');
     } catch (error) {
       setError(error.message);
@@ -40,7 +45,7 @@ const Login = () => {
     <Container component="main" maxWidth="xs">
       <Paper elevation={6} sx={{ p: 4, mt: 8, display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
         <Typography component="h1" variant="h5">
-          Sign in
+          {isAdminMode ? 'Admin Login' : 'Sign in'}
         </Typography>
         <Box component="form" onSubmit={handleLogin} sx={{ mt: 1 }}>
           <TextField
@@ -68,23 +73,45 @@ const Login = () => {
               {error}
             </Typography>
           )}
+          <FormControlLabel
+            control={
+              <Switch
+                checked={isAdminMode}
+                onChange={(e) => {
+                  setIsAdminMode(e.target.checked);
+                  if (e.target.checked) {
+                    setEmail('');
+                    setPassword('');
+                  } else {
+                    setEmail('');
+                    setPassword('');
+                  }
+                }}
+              />
+            }
+            label="Admin Login"
+            sx={{ mb: 2 }}
+          />
           <Button
             type="submit"
             fullWidth
             variant="contained"
             sx={{ mt: 3, mb: 2 }}
+            color={isAdminMode ? "secondary" : "primary"}
           >
-            Sign In
+            {isAdminMode ? 'Login as Admin' : 'Sign In'}
           </Button>
-          <Button
-            fullWidth
-            variant="outlined"
-            onClick={handleGoogleLogin}
-            sx={{ mb: 2, color: 'primary.main', borderColor: 'primary.main', '& .MuiButton-startIcon': { color: 'white' } }}
-            startIcon={<GoogleIcon />} // Agregar el icono de Google con color blanco
-          >
-            Sign In with Google
-          </Button>
+          {!isAdminMode && (
+            <Button
+              fullWidth
+              variant="outlined"
+              onClick={handleGoogleLogin}
+              sx={{ mb: 2, color: 'primary.main', borderColor: 'primary.main', '& .MuiButton-startIcon': { color: 'white' } }}
+              startIcon={<GoogleIcon />}
+            >
+              Sign In with Google
+            </Button>
+          )}
           <Button
             fullWidth
             variant="text"
